@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+diff=diff
+if (( $# )) && [[ "$1" = "{difff}" ]] ; then
+    diff=difff
+fi
+if (( $# < 1 )) ; then
+    >&2 echo "usage: git-diff-commit <commit> ..."
+    exit 1
+else
+    for commit ; do
+        git "${diff}" "${commit}"^.."${commit}"
+    done
+fi
