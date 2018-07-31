@@ -1,0 +1,34 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+my $ph;
+my %branches;
+
+open($ph, "-|", "git", "reflog", "show", "--all", "--no-abbrev-commit") or die("pipe failed: $!\n");
+while (<$ph>) {
+    chomp(); s{\r$}{};
+    if (m{^([A-Fa-f0-9]+)\s+
+          (?:\([^\)]+\)\s+)?
+          refs/heads/([^@]+)@}xi) {
+        my ($commit, $branch) = ($1, $2);
+        $branches{$commit} ||= [];
+        push(@{$branches{$commit}}, $branch);
+    }
+}
+
+open($ph, "-|", "git", "log", @ARGV) or die("pipe failed: $!\n");
+while (<$ph>) {
+    chomp(); s{\r$}{};
+    s{^commit\s+([A-Fa-f0-9]+)}{show_branches($&, $1)}ge;
+} continue {
+    print "$_\n";
+}
+
+sub show_branches {
+    my ($stuff, $commit) = @_;
+    if (exists $branches{$commit}) {
+        $stuff .= sprintf(" [%s]", join(", ", @{$branches{$commit}}));
+    }
+    return $stuff;
+}
