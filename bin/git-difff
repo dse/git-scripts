@@ -35,4 +35,9 @@ if git diff --ignore-cr-at-eol --no-index /dev/null /dev/null >/dev/null 2>/dev/
     difff_options+=(--ignore-cr-at-eol)
 fi
 
-exec git "${difff_global_options[@]}" difff "${difff_options[@]}" "$@" "${difff_arguments[@]}"
+if (( $# )) && [[ "$1" = "{logg}" ]] ; then
+    shift
+    exec git "${difff_global_options[@]}" log --patch "${difff_options[@]}" "$@" "${difff_arguments[@]}"
+else
+    exec git "${difff_global_options[@]}" diff "${difff_options[@]}" "$@" "${difff_arguments[@]}"
+fi
