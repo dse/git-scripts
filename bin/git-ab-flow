@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+echo "Needs \`git push\` to upstream:"
+git for-each-branch git ab --ahead '{local}' '{remote}'
+
+echo "Needs pull request once pushed upstream:"
+git for-each-branch git ab --ahead '{local}' origin/develop
+
+echo "Needs \`git pull\` from upstream:"
+git for-each-branch git ab --behind '{local}' '{remote}'
