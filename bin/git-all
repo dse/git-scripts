@@ -1,0 +1,210 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+# This is a Git porcelain script that either runs the specified
+# command with the specified arguments in the current directory if
+# it's in a working tree, or finds git repositories within the current
+# directory and runs the command/arguments in each of those if it's
+# not.
+
+my $recurse = My::Git::Porcelain::All->new();
+$recurse->run(@ARGV);
+
+package My::Git::Porcelain::All {
+
+    sub new {
+        my ($class) = @_;
+        my $self = bless({}, $class);
+        return $self;
+    }
+
+    sub run {
+        my ($self, @arguments) = @_;
+
+        my ($command, $arguments, $directories) = $self->split_arguments(@arguments);
+        my @directories = @$directories;
+        @arguments = @$arguments;
+
+        if (!defined $command) {
+            warn("usage: git all GITCOMMAND [ARGUMENTS] [--- DIRECTORIES]\n");
+            warn("       git all list-git-directories [--- DIRECTORIES]\n");
+            exit(1);
+        }
+        if ($command eq "test-git-all-porcelain") {
+            printf("\$command:     %s\n", $command);
+            printf("\@arguments:   %s (%s)\n", scalar @arguments, join " ", @arguments);
+            printf("\@directories: %s (%s)\n", scalar @directories, join " ", @directories);
+            exit(0);
+        }
+        if (scalar @directories) {
+            foreach my $directory (@directories) {
+                if (-d $directory) {
+                    if ($self->is_in_git_repos($directory)) {
+                        $self->run_git_command_in($directory, $directory, $command, @arguments);
+                    } else {
+                        $self->recurse_here($directory, $command, @arguments);
+                    }
+                } else {
+                    warn("$directory: not a directory\n");
+                }
+            }
+        } else {
+            if ($self->is_in_git_repos()) {
+                $self->run_git_command_in(".", undef, $command, @arguments);
+            } else {
+                $self->recurse_here(undef, $command, @arguments);
+            }
+        }
+    }
+
+    sub split_arguments {
+        my ($self, @arguments) = @_;
+
+        my $three_dashes_index = undef;
+      argument:
+        for (my $i = 0; $i < @arguments; $i += 1) {
+            if ($arguments[$i] eq "---") {
+                $three_dashes_index = $i;
+                last argument;
+            }
+        }
+
+        my @directories;
+        if (defined $three_dashes_index) {
+            @directories = splice(@arguments, $three_dashes_index + 1);
+            splice(@arguments, $three_dashes_index);
+        }
+
+        my $command = shift(@arguments);
+
+        if (wantarray) {
+            return ($command, \@arguments, \@directories);
+        } else {
+            return {
+                command => $command,
+                arguments => \@arguments,
+                directories => \@directories
+            };
+        }
+    }
+
+    sub is_in_git_repos {
+        my ($self, $dir) = @_;
+        my $pid = fork();
+        if (!defined $pid) {    # cannot fork
+            die("fork: $!\n");
+        } elsif (!$pid) {       # child
+            close(\*STDOUT);
+            close(\*STDERR);
+            if (defined $dir && $dir ne ".") {
+                if (!chdir($dir)) {
+                    die("chdir $dir: $!\n");
+                }
+            }
+            if (!exec("git", "rev-parse", "--git-dir")) {
+                die("exec git: $!\n");
+            }
+        } else {                # parent
+            if (wait() == -1) {
+                warn("unexpected: no child process\n");
+                return 0;       # failure
+            } else {
+                if ($?) {
+                    return 0;   # failure
+                } else {
+                    return 1;   # success
+                }
+            }
+        }
+    }
+
+    use File::Find;
+    use feature "say";
+    use Cwd;
+
+    sub recurse_here {
+        my ($self, $dir, $command, @arguments) = @_;
+        $dir //= ".";
+        my $wanted = sub {
+            if (-d $_) {
+                if (-d "$_/.git") {
+                    $self->run_git_command_in($File::Find::name, $_, $command, @arguments);
+                    $File::Find::prune = 1;
+                }
+            }
+        };
+        find({ wanted => $wanted }, $dir);
+    }
+
+    sub run_git_command_in {
+        my ($self, $dir, $reldir, $command, @arguments) = @_;
+        if ($command eq "list-git-directories") {
+            print("$dir\n");
+            return;
+        }
+        print("=== $dir ===\n");
+        print("\n");
+        my $pid = fork();
+        if (!defined $pid) {    # cannot fork
+            die("fork: $!\n");
+            # this point is never reached.
+        } elsif (!$pid) {       # child
+            if (defined $reldir && $reldir ne ".") {
+                if (!chdir($reldir)) {
+                    die("chdir $reldir: $!\n");
+                }
+            }
+            if (!exec("git", $command, @arguments)) {
+                die("exec git: $!\n");
+            }
+            # this point is never reached.
+        } else {                # parent
+            if (wait() == -1) {
+                warn("unexpected: no child process\n");
+            } else {
+                if ($?) {
+                    $self->warn_child_error($?, "git $command");
+                }
+            }
+        }
+        print("\n");
+    }
+
+    sub child_error_info {
+        my ($self, $status) = @_;
+        $status //= $?;
+
+        my $exit     = $status >> 8;
+        my $signal   = $status & 127;
+        my $coredump = ($status & 128) ? 1 : 0;
+        if (wantarray) {
+            return ($exit, $signal, $coredump);
+        } else {
+            return {
+                exit     => $exit,
+                signal   => $signal,
+                coredump => $coredump
+            };
+        }
+    }
+
+    sub warn_child_error {
+        my ($self, $status, @child) = @_;
+        $status //= $?;
+
+        my ($exit, $signal, $coredump) = $self->child_error_info($status);
+        if ($exit || $signal || $coredump) {
+            my @message;
+            push(@message, "returned $exit")      if $exit;
+            push(@message, "with signal $signal") if $signal;
+            push(@message, "core dumped")         if $coredump;
+            my $message = join(", ", @message);
+            if (!scalar @child) {
+                @child = ("child");
+            }
+            warn("@child died: $message\n");
+        }
+    }
+
+};                              # end package My::Git::Porcelain::All
