@@ -38,6 +38,15 @@ main () {
         --count
     )
 
+    if (( dry_run )) ; then
+        echo "${cmd[@]}"
+        return
+    fi
+
+    if (( verbose )) ; then
+        >&2 echo "+ ${cmd[@]}"
+    fi
+
     ab="$("${cmd[@]}")"
     a="${ab%$'\t'*}"
     b="${ab#*$'\t'}"
