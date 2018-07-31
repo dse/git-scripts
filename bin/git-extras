@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+progname="$(basename "$0")"
+
+main () {
+    local function
+    local -a invocation
+
+    invocation=("$0")
+
+    if [[ "${progname}" = "git-extras" ]] ; then
+        invocation+=("$1")
+        function="git-$1"
+        shift
+    else
+        function="${progname}"
+    fi
+
+    function="${function//-/_}"
+    if type -t -a "${function}" | grep "function" >/dev/null 2>/dev/null ; then
+        "${function}" "$@"
+    else
+        >&2 echo "git-extras: invocation as ${invocation[@]} not defined"
+        >&2 echo "            (no ${function} function defined)"
+        exit 1
+    fi
+}
+
+git_log_with_filenames () {
+    exec git log --name-status "$@"
+}
+
+git_log_with_diff () {
+    exec git log --patch "$@"
+}
+
+git_ls () {
+    exec git log --pretty=format:"%C(yellow)%h%Cred%d %Creset%s%Cblue [%cn]" --decorate "$@"
+}
+
+git_ll () {
+    exec git log --pretty=format:"%C(yellow)%h%Cred%d %Creset%s%Cblue [%cn]" --decorate --numstat "$@"
+}
+
+git_list_changes () {
+    exec git ls-files --modified "$@"
+}
+
+git_add_changes () {
+    git ls-files --modified "$@" | xargs git add
+}
+
+git_extras_gitconfig () {
+    echo "[alias]"
+    declare -F | sed -r -n -e '/^declare -f git_/{s///;s/_/-/g;s/^(.*)$/        \1 = git-extras \1/;p}'
+}
+
+git_install_forest () {
+    if [[ ! -d "$HOME/git/git-scripts" ]] ; then
+        mkdir -p "$HOME/git"
+        git clone git@github.com:jwiegley/git-scripts.git "$HOME/git/git-scripts"
+    fi
+}
+
+git_forest () {
+    if [[ -e "$HOME/git/git-scripts/git-forest" ]] ; then
+        exec "$HOME/git/git-scripts/git-forest" "$@"
+    else
+        >&2 echo "git-forest not found.  Run git install-forest."
+    fi
+}
+
+git_vc_dir () {
+    echo === 1 ===
+    git --no-pager update-index --refresh .
+    echo === 2 ===
+    git --no-pager diff-index --relative -M HEAD -- .
+    echo === 3 ===
+    git --no-pager ls-files -o --directory --no-empty-directory --exclude-standard -- .
+}
+
+main "$@"
