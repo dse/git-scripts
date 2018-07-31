@@ -64,8 +64,9 @@ main () {
 
 usage () { cat <<EOF; }
 usage:
-  ${progname} [<option> ...] <source> [<target>]
+  ${progname} [<option> ...] [<source> [<target>]]
 defaults:
+  <source> defaults to the current branch
   <target> defaults to <source>'s remote
 options:
   -a, --ahead    only show number of commits ahead
