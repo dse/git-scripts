@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+declare -a difff_global_options
+declare -a difff_options
+declare -a difff_arguments
+
+difff_global_options=(
+    -c core.whitespace=cr-at-eol
+)
+
+difff_options=(
+    --ignore-space-at-eol
+    --ignore-space-change
+    --ignore-all-space
+    --ignore-blank-lines
+    --diff-filter=ad
+    --no-prefix
+)
+
+difff_arguments=(
+    ":(exclude,icase)composer.lock"
+    ":(exclude,icase)*.min.css"
+    ":(exclude,icase)*.css.map"
+    ":(exclude,icase)*.min.js"
+    ":(exclude,icase)*.js.map"
+    ":(exclude,icase)*.jpg"
+    ":(exclude,icase)*.jpeg"
+    ":(exclude,icase)*.png"
+    ":(exclude,icase)*.gif"
+)
+
+if git diff --ignore-cr-at-eol --no-index /dev/null /dev/null >/dev/null 2>/dev/null ; then
+    difff_options+=(--ignore-cr-at-eol)
+fi
+
+exec git "${difff_global_options[@]}" difff "${difff_options[@]}" "$@" "${difff_arguments[@]}"
