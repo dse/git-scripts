@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+progname="$(basename "$0")"
+
+main () {
+    local head="$(git rev-parse --abbrev-ref HEAD)"
+    local local
+    local remote
+
+    git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read local remote ; do
+        if [[ "${head}" == "${local}" ]] ; then
+            export GIT_FOR_EACH_BRANCH_STAR=1
+        else
+            export GIT_FOR_EACH_BRANCH_STAR=0
+        fi
+        if (( $# )) ; then
+            run_cmd "${local}" "${remote}" "$@"
+        else
+            echo "${local}" "${remote}"
+        fi
+    done
+}
+
+usage () { cat <<EOF; }
+usage:
+  ${progname} [<option> ...] [<cmd> [<arg> ...]]
+behavior:
+  - Runs <cmd> <arg> ... <local> <remote> for each branch.
+  - If any of the arguments contain '{local}' or '{remote}' then each
+    branch's <local> or <remote> is substituted, and <local> and
+    <remote> are not appended to each command.
+  - If no <cmd> is specified, just outputs each local and remote.
+options:
+      --no-append  never append <local> and <remote> to command
+      --fail       exit on failure of any invocation of command
+  -h, --help       show this message
+  -n, --dry-run    take no action (if applicable)
+  -v, --verbose    additional output (if applicable)
+EOF
+
+fail=0
+dry_run=0
+verbose=0
+no_append=0
+
+check_options () {
+    local OPTION
+
+    while getopts 'hnv-:' OPTION ; do
+        if [[ "${OPTION}" = "-" ]] ; then
+            if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
+                break
+            fi
+            OPTION="${OPTARG}"
+            unset OPTARG
+            if [[ "${OPTION}" = *"="* ]] ; then
+                OPTARG="${OPTION#*=}"
+                OPTION="${OPTION%%=*}"
+            fi
+        fi
+        case "${OPTION}" in
+            fail)
+                fail="${OPTARG:-1}";;
+            no-append)
+                no_append="${OPTARG:-1}";;
+
+            h|help)
+                usage; exit 0;;
+            n|dry-run)
+                dry_run="${OPTARG:-1}";;
+            v|verbose)
+                verbose="${OPTARG:-$((verbose + 1))}";;
+            "?")
+                exit 1;;
+            ??*)                # length >= 2
+                >&2 echo "${progname}: invalid option: --${OPTION}"; exit 1;;
+            *)                  # length < 2
+                >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
+        esac
+    done
+}
+
+run_cmd () {
+    local local="$1"; shift
+    local remote="$1"; shift
+    local append_local_remote=1
+    local -a cmd
+    local arg
+    local cmd_arg
+    local exit
+
+    for arg ; do
+        cmd_arg="${arg}"
+        cmd_arg="${cmd_arg//\{local\}/"${local}"}"
+        cmd_arg="${cmd_arg//\{remote\}/"${remote}"}"
+        if [[ "${arg}" != "${cmd_arg}" ]] ; then
+            append_local_remote=0
+        fi
+        cmd+=("${cmd_arg}")
+    done
+
+    if (( append_local_remote && !no_append )) ; then
+        cmd+=("${local}" "${remote}")
+    fi
+
+    if (( dry_run )) ; then
+        echo "${cmd[@]@Q}"
+    elif (( verbose )) ; then
+        >&2 echo "+ ${cmd[@]@Q}"
+    fi
+
+    if (( dry_run )) ; then
+        return
+    fi
+
+    if ! "${cmd[@]}" ; then
+        exit=$?
+        if (( fail )) ; then
+            exit "${exit}"
+        fi
+    fi
+}
+
+###############################################################################
+
+check_options "$@"
+shift $((OPTIND - 1))
+main "$@"
