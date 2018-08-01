@@ -8,7 +8,20 @@ use strict;
 # directory and runs the command/arguments in each of those if it's
 # not.
 
+our $maxdepth;
+our $no_git;
+
+use Getopt::Long;
+Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
+Getopt::Long::GetOptions(
+    "max-depth|maxdepth=i" => \$maxdepth,
+    "no-git" => \$no_git,
+) or die("Do not type '$0 --help' for help yet.\n");
+
+$ENV{GIT_PAGER} = "cat";
 my $recurse = My::Git::Porcelain::All->new();
+$recurse->{maxdepth} = $maxdepth if defined $maxdepth;
+$recurse->{no_git}   = $no_git   if defined $no_git;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -22,7 +35,7 @@ package My::Git::Porcelain::All {
     sub run {
         my ($self, @arguments) = @_;
 
-        my ($command, $arguments, $directories) = $self->split_arguments(@arguments);
+        my ($command, $arguments, $directories) = $self->split_arguments(arguments => \@arguments);
         my @directories = @$directories;
         @arguments = @$arguments;
 
@@ -40,10 +53,15 @@ package My::Git::Porcelain::All {
         if (scalar @directories) {
             foreach my $directory (@directories) {
                 if (-d $directory) {
-                    if ($self->is_in_git_repos($directory)) {
-                        $self->run_git_command_in($directory, $directory, $command, @arguments);
+                    if ($self->is_in_git_repos(directory => $directory)) {
+                        $self->run_git_command_in(directory => $directory,
+                                                  relative_directory => $directory,
+                                                  command => $command,
+                                                  arguments => \@arguments);
                     } else {
-                        $self->recurse_here($directory, $command, @arguments);
+                        $self->recurse_here(directory => $directory,
+                                            command => $command,
+                                            arguments => \@arguments);
                     }
                 } else {
                     warn("$directory: not a directory\n");
@@ -51,15 +69,19 @@ package My::Git::Porcelain::All {
             }
         } else {
             if ($self->is_in_git_repos()) {
-                $self->run_git_command_in(".", undef, $command, @arguments);
+                $self->run_git_command_in(directory => ".",
+                                          command => $command,
+                                          arguments => \@arguments);
             } else {
-                $self->recurse_here(undef, $command, @arguments);
+                $self->recurse_here(command => $command,
+                                    arguments => \@arguments);
             }
         }
     }
 
     sub split_arguments {
-        my ($self, @arguments) = @_;
+        my ($self, %args) = @_;
+        my @arguments = @{$args{arguments}};
 
         my $three_dashes_index = undef;
       argument:
@@ -90,7 +112,9 @@ package My::Git::Porcelain::All {
     }
 
     sub is_in_git_repos {
-        my ($self, $dir) = @_;
+        my ($self, %args) = @_;
+        my $dir = $args{directory};
+
         my $pid = fork();
         if (!defined $pid) {    # cannot fork
             die("fork: $!\n");
@@ -122,14 +146,38 @@ package My::Git::Porcelain::All {
     use File::Find;
     use feature "say";
     use Cwd;
+    use File::Spec;
 
     sub recurse_here {
-        my ($self, $dir, $command, @arguments) = @_;
-        $dir //= ".";
+        my ($self, %args) = @_;
+        my $depth = $args{depth} // 0;
+        my $dir = $args{directory} // ".";
+        my $command = $args{command};
+        my @arguments = @{$args{arguments}};
+
+        if (defined $self->{maxdepth}) {
+            if ($depth > $self->{maxdepth}) {
+                return;
+            }
+        }
+
         my $wanted = sub {
             if (-d $_) {
                 if (-d "$_/.git") {
-                    $self->run_git_command_in($File::Find::name, $_, $command, @arguments);
+                    my @splitdir = File::Spec->splitdir($File::Find::name);
+                    my $splitdir = scalar @splitdir;
+                    my $newdepth = $depth + $splitdir - 1;
+                    if (defined $self->{maxdepth}) {
+                        if ($newdepth > $self->{maxdepth}) {
+                            $File::Find::prune = 1;
+                            return;
+                        }
+                    }
+                    $self->run_git_command_in(depth => $newdepth,
+                                              directory => $File::Find::name,
+                                              relative_directory => $_,
+                                              command => $command,
+                                              arguments => \@arguments);
                     $File::Find::prune = 1;
                 }
             }
@@ -138,13 +186,17 @@ package My::Git::Porcelain::All {
     }
 
     sub run_git_command_in {
-        my ($self, $dir, $reldir, $command, @arguments) = @_;
+        my ($self, %args) = @_;
+        my $depth = $args{depth} // 1;
+        my $dir = $args{directory} // ".";
+        my $reldir = $args{relative_directory};
+        my $command = $args{command};
+        my @arguments = @{$args{arguments}};
         if ($command eq "list-git-directories") {
             print("$dir\n");
             return;
         }
-        print("=== $dir ===\n");
-        print("\n");
+        print("[$dir]\n");
         my $pid = fork();
         if (!defined $pid) {    # cannot fork
             die("fork: $!\n");
@@ -155,7 +207,11 @@ package My::Git::Porcelain::All {
                     die("chdir $reldir: $!\n");
                 }
             }
-            if (!exec("git", $command, @arguments)) {
+            my @cmd = ($command, @arguments);
+            if (!$self->{no_git}) {
+                unshift(@cmd, "git");
+            }
+            if (!exec(@cmd)) {
                 die("exec git: $!\n");
             }
             # this point is never reached.
@@ -168,7 +224,6 @@ package My::Git::Porcelain::All {
                 }
             }
         }
-        print("\n");
     }
 
     sub child_error_info {
