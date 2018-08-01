@@ -34,7 +34,7 @@ main () {
     cmd=(
         git rev-list
         --left-right
-        "${source}..${target}"
+        "${source}...${target}"
         --count
     )
 
