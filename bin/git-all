@@ -14,15 +14,17 @@ our $no_git;
 our $short;
 our $inline;
 our $no_brackets;
+our $indent;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
     "max-depth|maxdepth=i" => \$maxdepth,
-    "no-git" => \$no_git,
-    "short" => \$short,
-    "inline" => \$inline,
-    "no-brackets" => \$no_brackets,
+    "no-git"               => \$no_git,
+    "short"                => \$short,
+    "inline"               => \$inline,
+    "no-brackets"          => \$no_brackets,
+    "indent"               => \$indent,
 ) or die("Do not type '$0 --help' for help yet.\n");
 
 $ENV{GIT_PAGER} = "cat";
@@ -32,6 +34,7 @@ $recurse->{no_git}      = $no_git      if defined $no_git;
 $recurse->{short}       = $short       if defined $short;
 $recurse->{inline}      = $inline      if defined $inline;
 $recurse->{no_brackets} = $no_brackets if defined $no_brackets;
+$recurse->{indent}      = $indent      if defined $indent;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -127,17 +130,17 @@ package My::Git::Porcelain::All {
 
         my $pid = fork();
         if (!defined $pid) {    # cannot fork
-            die("fork: $!\n");
+            die("fork: $!");
         } elsif (!$pid) {       # child
             close(\*STDOUT);
             close(\*STDERR);
             if (defined $dir && $dir ne ".") {
                 if (!chdir($dir)) {
-                    die("chdir $dir: $!\n");
+                    die("chdir $dir: $!");
                 }
             }
             if (!exec("git", "rev-parse", "--git-dir")) {
-                die("exec git: $!\n");
+                die("exec git: $!");
             }
         } else {                # parent
             if (wait() == -1) {
@@ -213,32 +216,106 @@ package My::Git::Porcelain::All {
         my $nl     = $self->{inline} ? " " : "\n";
         printf($format . $nl, $print);
 
+        my ($stdout_read, $stdout_write);
+        my ($stderr_read, $stderr_write);
+        if ($self->{indent}) {
+            pipe($stdout_read, $stdout_write) or die("pipe: $!");
+            pipe($stderr_read, $stderr_write) or die("pipe: $!");
+            $stdout_write->autoflush(1);
+            $stderr_write->autoflush(1);
+            $stdout_read->autoflush(1);
+            $stderr_read->autoflush(1);
+        }
+
+        my @cmd = ($command, @arguments);
+        if (!$self->{no_git}) {
+            unshift(@cmd, "git");
+        }
+
         my $pid = fork();
         if (!defined $pid) {    # cannot fork
-            die("fork: $!\n");
+            die("fork: $!");
             # this point is never reached.
         } elsif (!$pid) {       # child
             if (defined $reldir && $reldir ne ".") {
                 if (!chdir($reldir)) {
-                    die("chdir $reldir: $!\n");
+                    die("chdir $reldir: $!");
                 }
             }
-            my @cmd = ($command, @arguments);
-            if (!$self->{no_git}) {
-                unshift(@cmd, "git");
+            if ($self->{indent}) {
+                open(STDOUT, ">&", $stdout_write) or die("open: $!");
+                open(STDERR, ">&", $stderr_write) or die("open: $!");
             }
             if (!exec(@cmd)) {
-                die("exec git: $!\n");
+                die("exec $cmd[0]: $!");
             }
-            # this point is never reached.
         } else {                # parent
-            if (wait() == -1) {
-                warn("unexpected: no child process\n");
-            } else {
-                if ($?) {
-                    $self->warn_child_error($?, "git $command");
+            my ($pid1, $pid2);
+
+            my $do_a_wait = sub {
+                my $wait = wait();
+                my $status = $?;
+                if ($wait == -1) {
+                    warn("unexpected: no child process\n");
+                } elsif (defined $wait) {
+                    if (defined $pid1 && $wait == $pid1) {
+                        if ($status) {
+                            $self->warn_child_error($status, "stdout pipe");
+                        }
+                    } elsif (defined $pid2 && $wait == $pid2) {
+                        if ($status) {
+                            $self->warn_child_error($status, "stderr pipe");
+                        }
+                    } elsif (defined $pid && $wait == $pid) {
+                        if ($status) {
+                            $self->warn_child_error($status, "$cmd[0]");
+                        }
+                    } else {
+                        warn("unexpected return value from wait()\n");
+                    }
+                } else {
+                    warn("unexpected: wait() returned undefined\n");
                 }
+            };
+
+            if ($self->{indent}) {
+                close($stdout_write) or die("close: $!");
+                close($stderr_write) or die("close: $!");
+
+                $pid1 = fork();
+                if (!defined $pid1) {
+                    die("fork: $!");
+                } elsif (!$pid1) { # child
+                    close($stderr_read) or die("close: $!");
+                    select STDOUT; $| = 1;
+                    while (<$stdout_read>) {
+                        print STDOUT "    $_";
+                    }
+                    close($stdout_read) or die("close: $!");
+                    exit;
+                }
+
+                $pid2 = fork();
+                if (!defined $pid2) {
+                    die("fork: $!");
+                } elsif (!$pid2) { # child
+                    close($stdout_read) or die("close: $!");
+                    select STDERR; $| = 1;
+                    while (<$stderr_read>) {
+                        print STDERR "    $_";
+                    }
+                    close($stderr_read) or die("close: $!");
+                    exit;
+                }
+
+                close($stdout_read) or die("close: $!");
+                close($stderr_read) or die("close: $!");
+
+                $do_a_wait->();
+                $do_a_wait->();
             }
+
+            $do_a_wait->();
         }
     }
 
