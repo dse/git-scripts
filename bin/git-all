@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
+use v5.10.0;
 
 # This is a Git porcelain script that either runs the specified
 # command with the specified arguments in the current directory if
@@ -10,18 +11,27 @@ use strict;
 
 our $maxdepth;
 our $no_git;
+our $short;
+our $inline;
+our $no_brackets;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
     "max-depth|maxdepth=i" => \$maxdepth,
     "no-git" => \$no_git,
+    "short" => \$short,
+    "inline" => \$inline,
+    "no-brackets" => \$no_brackets,
 ) or die("Do not type '$0 --help' for help yet.\n");
 
 $ENV{GIT_PAGER} = "cat";
 my $recurse = My::Git::Porcelain::All->new();
-$recurse->{maxdepth} = $maxdepth if defined $maxdepth;
-$recurse->{no_git}   = $no_git   if defined $no_git;
+$recurse->{maxdepth}    = $maxdepth    if defined $maxdepth;
+$recurse->{no_git}      = $no_git      if defined $no_git;
+$recurse->{short}       = $short       if defined $short;
+$recurse->{inline}      = $inline      if defined $inline;
+$recurse->{no_brackets} = $no_brackets if defined $no_brackets;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -147,6 +157,7 @@ package My::Git::Porcelain::All {
     use feature "say";
     use Cwd;
     use File::Spec;
+    use File::Basename qw(dirname basename);
 
     sub recurse_here {
         my ($self, %args) = @_;
@@ -196,7 +207,12 @@ package My::Git::Porcelain::All {
             print("$dir\n");
             return;
         }
-        print("[$dir]\n");
+
+        my $format = $self->{no_brackets} ? "%s" : "[%s]";
+        my $print  = $self->{short} ? basename($dir) : $dir;
+        my $nl     = $self->{inline} ? " " : "\n";
+        printf($format . $nl, $print);
+
         my $pid = fork();
         if (!defined $pid) {    # cannot fork
             die("fork: $!\n");
