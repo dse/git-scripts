@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -o errexit
 set -o pipefail
+# set -o xtrace
 
 # TODO:
 #   git-ab <a> [<b> [<c> [<d> ...]]]
@@ -51,7 +52,7 @@ main () {
     if (( $# )) ; then
         target2="$1"; shift
     else
-        target2=""; shift
+        target2=""
     fi
 
     if (( verbose >= 2 )) ; then
@@ -132,16 +133,19 @@ echo2 () {
     local a="$2"
     local b="$3"
     local target="$4"
+
     local separator=" "
+    local -a echo
 
     if (( porcelain )) ; then
-        >&2 echo "p"
         if (( tabs )) ; then
-            >&2 echo "t"
             separator=$'\t'
         fi
 
-        IFS="${separator}" echo "${source}" "${a}" "${b}" "${target}"
+        echo=("${source}" "${a}" "${b}" "${target}")
+
+        local IFS="${separator}"
+        echo "${echo[*]}"
         return 0
     fi
 
@@ -180,12 +184,18 @@ echo3 () {
     local d="$6"
     local target2="$7"
 
+    local separator=" "
+    local -a echo
+
     if (( porcelain )) ; then
         if (( tabs )) ; then
             separator=$'\t'
         fi
 
-        IFS="${separator}" echo "${source}" "${a}" "${b}" "${target}" "${c}" "${d}" "${target2}"
+        echo=("${source}" "${a}" "${b}" "${target}" "${c}" "${d}" "${target2}")
+
+        local IFS="${separator}"
+        echo "${echo[*]}"
         return
     fi
 
