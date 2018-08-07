@@ -2,21 +2,35 @@
 set -o errexit
 set -o pipefail
 
+# TODO:
+#   git-ab <a> <b> <c> <d> ...
+#   - can check a against b, a against c, a against d, etc.
+#   - or  check a against b, b against c, c against d, etc.
+
 progname="$(basename "$0")"
 
 main () {
     local source
     local target
-    local star1=""
-    local star2=""
+    local target2
+    local star1
+    local star2
     local -a cmd
+    local -a cmd2
     local ab
+    local cd
     local a
     local b
+    local c
+    local d
     
     if (( $# )) ; then
         source="$1"; shift
     else
+        source="$(git rev-parse --abbrev-ref HEAD)"
+    fi
+
+    if [[ "${source}" = "" || "${source}" = "-" ]] ; then
         source="$(git rev-parse --abbrev-ref HEAD)"
     fi
     
@@ -26,9 +40,26 @@ main () {
         target="$(git for-each-ref --format='%(upstream:short)' "refs/heads/${source}")"
     fi
 
+    if [[ "${target}" = "" || "${target}" = "-" ]] ; then
+        target="$(git for-each-ref --format='%(upstream:short)' "refs/heads/${source}")"
+    fi
+    
+    if (( $# )) ; then
+        target2="$1"; shift
+    else
+        target2=""; shift
+    fi
+
+    if (( verbose >= 2 )) ; then
+        >&2 echo "source is ${source}"
+        >&2 echo "target is ${target}"
+        [[ -n "${target2}" ]] && >&2 echo "target2 is ${target2}"
+    fi
+
     case "${GIT_FOR_EACH_BRANCH_STAR}" in
-        1) star1="* "; star2="  ";;
-        0) star1="  "; star2="  ";;
+        "") star1="";   star2="";;
+        0)  star1="- "; star2="  ";;
+        *)  star1="* "; star2="  ";;
     esac
 
     cmd=(
@@ -38,8 +69,20 @@ main () {
         --count
     )
 
+    if [[ -n "${target2}" ]] ; then
+        cmd2=(
+            git rev-list
+            --left-right
+            "${target}...${target2}"
+            --count
+        )
+    fi
+
     if (( dry_run )) ; then
         echo "${cmd[@]}"
+        if [[ -n "${target2}" ]] ; then
+            echo "${cmd2[@]}"
+        fi
         return
     fi
 
@@ -51,44 +94,129 @@ main () {
     a="${ab%$'\t'*}"
     b="${ab#*$'\t'}"
 
+    if (( verbose >= 2 )) ; then
+        >&2 echo ">> $ab"
+    fi
+
+    if [[ -n "${target2}" ]] ; then
+        if (( verbose )) ; then
+            >&2 echo "+ ${cmd2[@]}"
+        fi
+
+        cd="$("${cmd2[@]}")"
+        c="${cd%$'\t'*}"
+        d="${cd#*$'\t'}"
+
+        if (( verbose >= 2 )) ; then
+            >&2 echo ">> $cd"
+        fi
+    else
+        cd=""
+        c="0"
+        d="0"
+    fi
+
+    if [[ -n "${target2}" ]] ; then
+        echo3 "${source}" "${a}" "${b}" "${target}" "${c}" "${d}" "${target2}" || true
+    else
+        echo2 "${source}" "${a}" "${b}" "${target}" || true
+    fi
+}
+
+echo2 () {
+    local source="$1"
+    local a="$2"
+    local b="$3"
+    local target="$4"
+    local separator=" "
+
+    if (( porcelain )) ; then
+        >&2 echo "p"
+        if (( tabs )) ; then
+            >&2 echo "t"
+            separator=$'\t'
+        fi
+
+        IFS="${separator}" echo "${source}" "${a}" "${b}" "${target}"
+        return 0
+    fi
+
     if (( ahead && behind )) ; then
         if (( zero || (a && b) )) ; then
             echo -n "${star1}"
             echo "${source} is ${a} commits ahead and ${b} commits behind ${target}"
+            return 0
         elif (( a )) ; then
             echo -n "${star1}"
             echo "${source} is ${a} commits ahead of ${target}"
+            return 0
         elif (( b )) ; then
             echo -n "${star1}"
             echo "${source} is ${b} commits behind ${target}"
+            return 0
         fi
     elif (( ahead && (a || zero) )) ; then
         echo -n "${star1}"
         echo "${source} is ${a} commits ahead of ${target}"
+        return 0
     elif (( behind && (b || zero) )) ; then
         echo -n "${star1}"
         echo "${source} is ${b} commits behind ${target}"
+        return 0
     fi
+    return 1
+}
+
+echo3 () {
+    local source="$1"
+    local a="$2"
+    local b="$3"
+    local target="$4"
+    local c="$5"
+    local d="$6"
+    local target2="$7"
+
+    if (( porcelain )) ; then
+        if (( tabs )) ; then
+            separator=$'\t'
+        fi
+
+        IFS="${separator}" echo "${source}" "${a}" "${b}" "${target}" "${c}" "${d}" "${target2}"
+        return
+    fi
+
+    if echo2 "${source}" "${a}" "${b}" "${target}" ; then
+        case "${GIT_FOR_EACH_BRANCH_STAR}" in
+            "") star1="";   star2="";;
+            *)  star1="  "; star2="  ";;
+        esac
+    fi
+    echo2 "${target}" "${c}" "${d}" "${target2}" || true
 }
 
 usage () { cat <<EOF; }
 usage:
-  ${progname} [<option> ...] [<source> [<target>]]
+  ${progname} [<option> ...] [<source> [<target> [<target2>]]]
 defaults:
   <source> defaults to the current branch
   <target> defaults to <source>'s remote
+  <target2> has no default.
 options:
-  -a, --ahead    only show number of commits ahead
-  -b, --behind   only show number of commits behind
-  -z, --zero     show all ahead/behind counts including zeroes
-  -h, --help     show this message
-  -n, --dry-run  take no action (if applicable)
-  -v, --verbose  additional output (if applicable)
+  -a, --ahead      only show number of commits ahead
+  -b, --behind     only show number of commits behind
+  -z, --zero       show all ahead/behind counts including zeroes
+      --porcelain  computer friendly format
+      --tabs       with --porcelain, use tab separator
+  -h, --help       show this message
+  -n, --dry-run    take no action (if applicable)
+  -v, --verbose    additional output (if applicable)
 EOF
 
 ahead=""
 behind=""
 zero=0
+porcelain=0
+tabs=0
 
 dry_run=0
 verbose=0
@@ -119,6 +247,12 @@ check_options () {
                 ;;
             z|zero)
                 zero="${OPTARG:-1}"
+                ;;
+            porcelain)
+                porcelain="${OPTARG:-1}"
+                ;;
+            tabs)
+                tabs="${OPTARG:-1}"
                 ;;
 
             h|help)
