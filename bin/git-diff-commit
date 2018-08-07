@@ -2,6 +2,7 @@
 diff=diff
 if (( $# )) && [[ "$1" = "{difff}" ]] ; then
     diff=difff
+    shift
 fi
 if (( $# < 1 )) ; then
     >&2 echo "usage: git-diff-commit <commit> ..."
