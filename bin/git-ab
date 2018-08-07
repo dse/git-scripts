@@ -3,9 +3,13 @@ set -o errexit
 set -o pipefail
 
 # TODO:
-#   git-ab <a> <b> <c> <d> ...
-#   - can check a against b, a against c, a against d, etc.
-#   - or  check a against b, b against c, c against d, etc.
+#   git-ab <a> [<b> [<c> [<d> ...]]]
+#   --abac, --abacad  check a against b, a against c, a against d, etc.
+#   --abbc, --abbccd  check a against b, b against c, c against d, etc.  (the default)
+# where:
+#   <a> defaults to current local branch
+#   <b> defaults to <a>'s remote
+#   <c>, <d>, etc. have no defaults
 
 progname="$(basename "$0")"
 
