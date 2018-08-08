@@ -6,6 +6,7 @@ progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
 . "${dirname}/../share/getlongopts-bash/getlongopts.sh"
+. "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
     local head="$(git rev-parse --abbrev-ref HEAD)"
@@ -132,17 +133,7 @@ run_cmd () {
         cmd+=("${local}" "${remote}")
     fi
 
-    if (( dry_run )) ; then
-        echo "${cmd[@]@Q}"
-    elif (( verbose )) ; then
-        >&2 echo "+ ${cmd[@]@Q}"
-    fi
-
-    if (( dry_run )) ; then
-        return
-    fi
-
-    if ! "${cmd[@]}" ; then
+    if ! run "${cmd[@]}" ; then
         exit=$?
         if (( fail )) ; then
             exit "${exit}"

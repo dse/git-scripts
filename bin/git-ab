@@ -16,6 +16,7 @@ progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
 . "${dirname}/../share/getlongopts-bash/getlongopts.sh"
+. "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
     local source
@@ -87,9 +88,9 @@ main () {
     fi
 
     if (( dry_run )) ; then
-        echo "${cmd[@]}"
+        >&2 echo "+ ${cmd[@]}"
         if [[ -n "${target2}" ]] ; then
-            echo "${cmd2[@]}"
+            >&2 echo "+ ${cmd2[@]}"
         fi
         return
     fi

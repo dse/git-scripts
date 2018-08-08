@@ -6,6 +6,7 @@ progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
 . "${dirname}/../share/getlongopts-bash/getlongopts.sh"
+. "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
     if (( porcelain )) ; then
@@ -94,16 +95,6 @@ check_options () {
                 >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
         esac
     done
-}
-
-run () {
-    if (( verbose || dry_run )) ; then
-        >&2 echo "+ ${@@Q}"
-    fi
-    if (( dry_run )) ; then
-        return
-    fi
-    "$@"
 }
 
 ###############################################################################
