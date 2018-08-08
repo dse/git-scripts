@@ -19,7 +19,7 @@ usage () { cat <<EOF; }
 usage:
   ${progname} [<option> ...]
 options:
-      --zero       show all ahead/behind counts including zeroes
+  -z, --zero       show all ahead/behind counts including zeroes
   -h, --help       show this message
   -n, --dry-run    take no action (if applicable)
   -v, --verbose    additional output (if applicable)
@@ -35,7 +35,7 @@ verbose=0
 check_options () {
     local OPTION
 
-    while getopts 'hnv-:' OPTION ; do
+    while getopts 'hnvz-:' OPTION ; do
         if [[ "${OPTION}" = "-" ]] ; then
             if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
                 break
@@ -48,7 +48,7 @@ check_options () {
             fi
         fi
         case "${OPTION}" in
-            zero)
+            z|zero)
                 git_ab_options+=("--zero")
                 ;;
 
