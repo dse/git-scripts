@@ -2,11 +2,64 @@
 set -o errexit
 set -o pipefail
 
-echo "Needs push to upstream and/or pull request:"
-git for-each-branch git ab --ahead '{local}' '{remote}' origin/develop
+progname="$(basename "$0")"
 
-echo "Needs \`git pull\` from upstream:"
-git for-each-branch git ab --behind '{local}' '{remote}'
+main () {
+    echo "Needs push to upstream and/or pull request:"
+    git for-each-branch git ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
 
-echo "Needs \`git pull\` from origin/develop:"
-git for-each-branch git ab --behind '{local}' 'origin/develop'
+    echo "Needs \`git pull\` from upstream:"
+    git for-each-branch git ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
+
+    echo "Needs \`git pull\` from origin/develop:"
+    git for-each-branch --exclude=master git ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
+}
+
+declare -a git_ab_options
+
+git_ab_options=()
+
+dry_run=0
+verbose=0
+
+check_options () {
+    local OPTION
+
+    while getopts 'hnv-:' OPTION ; do
+        if [[ "${OPTION}" = "-" ]] ; then
+            if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
+                break
+            fi
+            OPTION="${OPTARG}"
+            unset OPTARG
+            if [[ "${OPTION}" = *"="* ]] ; then
+                OPTARG="${OPTION#*=}"
+                OPTION="${OPTION%%=*}"
+            fi
+        fi
+        case "${OPTION}" in
+            zero)
+                git_ab_options+=("--zero")
+                ;;
+
+            h|help)
+                usage; exit 0;;
+            n|dry-run)
+                dry_run="${OPTARG:-1}";;
+            v|verbose)
+                verbose="${OPTARG:-$((verbose + 1))}";;
+            "?")
+                exit 1;;
+            ??*)                # length >= 2
+                >&2 echo "${progname}: invalid option: --${OPTION}"; exit 1;;
+            *)                  # length < 2
+                >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
+        esac
+    done
+}
+
+###############################################################################
+
+check_options "$@"
+shift $((OPTIND - 1))
+main "$@"
