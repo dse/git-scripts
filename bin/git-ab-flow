@@ -3,6 +3,9 @@ set -o errexit
 set -o pipefail
 
 progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
+. "${dirname}/../share/getlongopts-bash/getlongopts.sh"
 
 main () {
     if (( porcelain )) ; then
@@ -10,21 +13,21 @@ main () {
     else
         echo "Needs push to upstream and/or pull request:"
     fi
-    git for-each-branch ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
+    run git for-each-branch ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
 
     if (( porcelain )) ; then
         echo "#NEEDS_PULL_FROM_UPSTREAM"
     else
         echo "Needs \`git pull\` from upstream:"
     fi
-    git for-each-branch ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
+    run git for-each-branch ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
 
     if (( porcelain )) ; then
         echo "#NEEDS_PULL_FROM_ORIGIN_DEVELOP"
     else
         echo "Needs \`git pull\` from origin/develop:"
     fi
-    git for-each-branch --exclude=master ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
+    run git for-each-branch --exclude=master ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
 }
 
 usage () { cat <<EOF; }
@@ -49,21 +52,20 @@ zero=0
 dry_run=0
 verbose=0
 
+declare -a longoptions
+longoptions=(
+    zero      0
+    porcelain 0
+    tabs      0
+    help      0
+    dry-run   0
+    verbose   0
+)
+
 check_options () {
     local OPTION
 
-    while getopts 'hnvz-:' OPTION ; do
-        if [[ "${OPTION}" = "-" ]] ; then
-            if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
-                break
-            fi
-            OPTION="${OPTARG}"
-            unset OPTARG
-            if [[ "${OPTION}" = *"="* ]] ; then
-                OPTARG="${OPTION#*=}"
-                OPTION="${OPTION%%=*}"
-            fi
-        fi
+    while getlongopts 'hnvz' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
             z|zero)
                 zero=1
@@ -81,9 +83,9 @@ check_options () {
             h|help)
                 usage; exit 0;;
             n|dry-run)
-                dry_run="${OPTARG:-1}";;
+                dry_run=1;;
             v|verbose)
-                verbose="${OPTARG:-$((verbose + 1))}";;
+                verbose=$((verbose + 1));;
             "?")
                 exit 1;;
             ??*)                # length >= 2
@@ -92,6 +94,16 @@ check_options () {
                 >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
         esac
     done
+}
+
+run () {
+    if (( verbose || dry_run )) ; then
+        >&2 echo "+ ${@@Q}"
+    fi
+    if (( dry_run )) ; then
+        return
+    fi
+    "$@"
 }
 
 ###############################################################################

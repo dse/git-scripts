@@ -13,6 +13,9 @@ set -o pipefail
 #   <c>, <d>, etc. have no defaults
 
 progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
+. "${dirname}/../share/getlongopts-bash/getlongopts.sh"
 
 main () {
     local source
@@ -253,46 +256,47 @@ tabs=0
 dry_run=0
 verbose=0
 
+declare -a longoptions
+longoptions=(
+    ahead     0
+    behind    0
+    zero      0
+    porcelain 0
+    tabs      0
+    help      0
+    dry-run   0
+    verbose   0
+)
+
 check_options () {
     local OPTION
     
-    while getopts 'abzhnv-:' OPTION ; do
-        if [[ "${OPTION}" = "-" ]] ; then
-            if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
-                break
-            fi
-            OPTION="${OPTARG}"
-            unset OPTARG
-            if [[ "${OPTION}" = *"="* ]] ; then
-                OPTARG="${OPTION#*=}"
-                OPTION="${OPTION%%=*}"
-            fi
-        fi
+    while getlongopts 'abzhnv' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
             a|ahead)
-                ahead="${OPTARG:-1}"
+                ahead=1
                 : "${behind:=0}"
                 ;;
             b|behind)
-                behind="${OPTARG:-1}"
+                behind=1
                 : "${ahead:=0}"
                 ;;
             z|zero)
-                zero="${OPTARG:-1}"
+                zero=1
                 ;;
             porcelain)
-                porcelain="${OPTARG:-1}"
+                porcelain=1
                 ;;
             tabs)
-                tabs="${OPTARG:-1}"
+                tabs=1
                 ;;
 
             h|help)
                 usage; exit 0;;
             n|dry-run)
-                dry_run="${OPTARG:-1}";;
+                dry_run=1;;
             v|verbose)
-                verbose="${OPTARG:-$((verbose + 1))}";;
+                verbose=$((verbose + 1));;
             "?")
                 exit 1;;
             ??*)                # length >= 2
@@ -302,6 +306,7 @@ check_options () {
         esac
     done
 
+    # if neither --ahead nor --behind is specified
     : "${behind:=1}"
     : "${ahead:=1}"
 }

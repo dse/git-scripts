@@ -3,6 +3,9 @@ set -o errexit
 set -o pipefail
 
 progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
+. "${dirname}/../share/getlongopts-bash/getlongopts.sh"
 
 main () {
     local head="$(git rev-parse --abbrev-ref HEAD)"
@@ -61,42 +64,37 @@ no_git=0
 dry_run=0
 verbose=0
 
+declare -a longoptions
+longoptions=(
+    no-append 0
+    fail      0
+    exclude   1
+    no-git    0
+    help      0
+    dry-run   0
+    verbose   0
+)
+
 check_options () {
     local OPTION
 
-    while getopts 'hnv-:' OPTION ; do
-        if [[ "${OPTION}" = "-" ]] ; then
-            if [[ "${OPTARG}" = "" ]] ; then # "--" by itself
-                break
-            fi
-            OPTION="${OPTARG}"
-            unset OPTARG
-            if [[ "${OPTION}" = *"="* ]] ; then
-                OPTARG="${OPTION#*=}"
-                OPTION="${OPTION%%=*}"
-            fi
-        fi
+    while getlongopts 'hnv' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
             exclude)
-                if [[ ! -v "OPTARG" ]] ; then
-                    >&2 echo "git-ab: option requires argument: --${OPTION}"
-                    exit 1
-                fi
-                excludes+=("${OPTARG}")
-                ;;
+                excludes+=("${OPTARG}");;
             fail)
-                fail="${OPTARG:-1}";;
+                fail=1;;
             no-append)
-                no_append="${OPTARG:-1}";;
+                no_append=1;;
             no-git)
-                no_git="${OPTARG:-1}";;
+                no_git=1;;
 
             h|help)
                 usage; exit 0;;
             n|dry-run)
-                dry_run="${OPTARG:-1}";;
+                dry_run=1;;
             v|verbose)
-                verbose="${OPTARG:-$((verbose + 1))}";;
+                verbose=$((verbose + 1));;
             "?")
                 exit 1;;
             ??*)                # length >= 2
@@ -134,17 +132,7 @@ run_cmd () {
         cmd+=("${local}" "${remote}")
     fi
 
-    if (( dry_run )) ; then
-        echo "${cmd[@]@Q}"
-    elif (( verbose )) ; then
-        >&2 echo "+ ${cmd[@]@Q}"
-    fi
-
-    if (( dry_run )) ; then
-        return
-    fi
-
-    if ! "${cmd[@]}" ; then
+    if ! run "${cmd[@]}" ; then
         exit=$?
         if (( fail )) ; then
             exit "${exit}"
