@@ -36,7 +36,7 @@ usage () { cat <<EOF; }
 usage:
   ${progname} [<option> ...] [<cmd> [<arg> ...]]
 behavior:
-  - Runs <cmd> <arg> ... <local> <remote> for each branch.
+  - Runs git <cmd> <arg> ... <local> <remote> for each branch.
   - If any of the arguments contain '{local}' or '{remote}' then each
     branch's <local> or <remote> is substituted, and <local> and
     <remote> are not appended to each command.
@@ -45,6 +45,7 @@ options:
       --no-append  never append <local> and <remote> to command
       --fail       exit on failure of any invocation of command
       --exclude=<branch>
+      --no-git     run <cmd> <args>, not git <cmd> <args>
   -h, --help       show this message
   -n, --dry-run    take no action (if applicable)
   -v, --verbose    additional output (if applicable)
@@ -55,6 +56,7 @@ declare -a excludes
 fail=0
 no_append=0
 excludes=()
+no_git=0
 
 dry_run=0
 verbose=0
@@ -86,6 +88,8 @@ check_options () {
                 fail="${OPTARG:-1}";;
             no-append)
                 no_append="${OPTARG:-1}";;
+            no-git)
+                no_git="${OPTARG:-1}";;
 
             h|help)
                 usage; exit 0;;
@@ -111,6 +115,10 @@ run_cmd () {
     local arg
     local cmd_arg
     local exit
+
+    if (( !no_git )) ; then
+        cmd+=("git")
+    fi
 
     for arg ; do
         cmd_arg="${arg}"
