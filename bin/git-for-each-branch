@@ -44,6 +44,7 @@ behavior:
 options:
       --no-append  never append <local> and <remote> to command
       --fail       exit on failure of any invocation of command
+      --exclude=<branch>
   -h, --help       show this message
   -n, --dry-run    take no action (if applicable)
   -v, --verbose    additional output (if applicable)
