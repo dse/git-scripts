@@ -54,7 +54,7 @@ Hat-tip for `git-ab` and `git-each-branch` goes out to:<br>
 <https://gist.github.com/vitalk/8639831>
 
 An advanced version of the above, on steroids:<br>
-<https://github.com/bill-auger/git-branch-status/>
+<https://github.com/bill-auger/git-branch-status>
 
 Some more git scripts:<br>
 https://github.com/jwiegley/git-scripts
