@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+main () {
+    local root_dir
+    local -a files
+    local hoard_dir
+    local file
+    local dirname
+    local basename
+    local newfile
+    local temp
+
+    root_dir="$(git rev-parse --show-toplevel)"
+    cd "${root_dir[@]}"
+    mapfile -t files <<< "$(git ls-files --others --exclude-standard --exclude='git-hoard-*/' | grep .)"
+    if (( ! "${#files[@]}" )) || [[ "${#files[@]}" = "1" && -z "${files[0]}" ]] ; then
+        >&2 echo "git-hoard: no files to hoard."
+        return
+    fi
+    hoard_dir="$(get_hoard_dir)"
+    hoard_dir="$(realpath "${hoard_dir}")"
+    >&2 echo "Created git-hoard directory '${hoard_dir}'"
+    for file in "${files[@]}" ; do
+        dirname="$(dirname "${file}")"
+        basename="$(basename "${file}")"
+        mkdir -p "${hoard_dir}/${dirname}"
+        newfile="${hoard_dir}/${dirname}/${basename}"
+        if mv "${file}" "${newfile}" ; then
+            >&2 echo "  '${file}' => '${newfile}'"
+        fi
+    done
+    >&2 echo "Enjoy your git-hoard: '${hoard_dir}'"
+}
+
+function get_hoard_dir () {
+    get_hoard_dir_with_count "$@"
+}
+
+function get_hoard_dir_with_count () {
+    local hoard_dir
+    local count=0
+    while true ; do
+        count=$((count + 1))
+        hoard_dir="git-hoard-${count}"
+        if ! [[ -e "${hoard_dir}" ]] ; then
+            break
+        fi
+    done
+    mkdir -p "${hoard_dir}" >/dev/null 2>/dev/null
+    if [[ -d "${hoard_dir}" ]] ; then
+        echo "${hoard_dir}"
+        return 0
+    else
+        return 1
+    fi
+}
+
+function get_hoard_dir_with_timestamp () {
+    local hoard_dir
+    local timestamp="$(date +%Y-%m-%d-%H%M%S%z)"
+    local count=0
+    while true ; do
+        count=$((count + 1))
+        hoard_dir="git-hoard-${timestamp}"
+        if (( count > 1 )) ; then
+            hoard_dir="${hoard_dir}-${count}"
+        fi
+        if ! [[ -e "${hoard_dir}" ]] ; then
+            break
+        fi
+    done
+    mkdir -p "${hoard_dir}" >/dev/null 2>/dev/null
+    if [[ -d "${hoard_dir}" ]] ; then
+        echo "${hoard_dir}"
+        return 0
+    else
+        return 1
+    fi
+}
+
+main "$@"
