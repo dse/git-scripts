@@ -137,7 +137,16 @@ echo2 () {
     local separator=" "
     local -a echo
 
+    local output=0
+    if (( zero || (ahead && a) || (behind && b) )) ; then
+        output=1
+    fi
+
     if (( porcelain )) ; then
+        if (( !output )) ; then
+            return 0
+        fi
+
         if (( tabs )) ; then
             separator=$'\t'
         fi
@@ -187,7 +196,16 @@ echo3 () {
     local separator=" "
     local -a echo
 
+    local output=0
+    if (( zero || (ahead && (a || c)) || (behind && (b || d)) )) ; then
+        output=1
+    fi
+
     if (( porcelain )) ; then
+        if (( !output )) ; then
+            return 0
+        fi
+
         if (( tabs )) ; then
             separator=$'\t'
         fi
