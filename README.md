@@ -57,4 +57,4 @@ An advanced version of the above, on steroids:<br>
 <https://github.com/bill-auger/git-branch-status>
 
 Some more git scripts:<br>
-https://github.com/jwiegley/git-scripts
+<https://github.com/jwiegley/git-scripts>
