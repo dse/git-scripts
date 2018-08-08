@@ -19,7 +19,7 @@ usage () { cat <<EOF; }
 usage:
   ${progname} [<option> ...]
 options:
-      --zero       output all statuses, even when zero a/b commits
+      --zero       show all ahead/behind counts including zeroes
   -h, --help       show this message
   -n, --dry-run    take no action (if applicable)
   -v, --verbose    additional output (if applicable)
