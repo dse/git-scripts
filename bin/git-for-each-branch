@@ -121,8 +121,8 @@ run_cmd () {
 
     for arg ; do
         cmd_arg="${arg}"
-        cmd_arg="${cmd_arg//\{local\}/"${local}"}"
-        cmd_arg="${cmd_arg//\{remote\}/"${remote}"}"
+        cmd_arg="${cmd_arg//\{local\}/${local}}"
+        cmd_arg="${cmd_arg//\{remote\}/${remote}}"
         if [[ "${arg}" != "${cmd_arg}" ]] ; then
             append_local_remote=0
         fi
