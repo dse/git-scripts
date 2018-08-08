@@ -6,13 +6,13 @@ progname="$(basename "$0")"
 
 main () {
     echo "Needs push to upstream and/or pull request:"
-    git for-each-branch git ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
+    git for-each-branch ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
 
     echo "Needs \`git pull\` from upstream:"
-    git for-each-branch git ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
+    git for-each-branch ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
 
     echo "Needs \`git pull\` from origin/develop:"
-    git for-each-branch --exclude=master git ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
+    git for-each-branch --exclude=master ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
 }
 
 usage () { cat <<EOF; }
