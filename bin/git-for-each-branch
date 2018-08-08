@@ -10,6 +10,15 @@ main () {
     local remote
 
     git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read local remote ; do
+        if (( "${#excludes[@]}" )) ; then
+            for exclude in "${excludes[@]}" ; do
+                if [[ "${local}" = "${exclude}" ]] ; then
+                    # next iteration of `while read local remote`, not
+                    # `for exclude`
+                    continue 2
+                fi
+            done
+        fi
         if [[ "${head}" == "${local}" ]] ; then
             export GIT_FOR_EACH_BRANCH_STAR=1
         else
@@ -40,10 +49,14 @@ options:
   -v, --verbose    additional output (if applicable)
 EOF
 
+declare -a excludes
+
 fail=0
+no_append=0
+excludes=()
+
 dry_run=0
 verbose=0
-no_append=0
 
 check_options () {
     local OPTION
@@ -61,6 +74,13 @@ check_options () {
             fi
         fi
         case "${OPTION}" in
+            exclude)
+                if [[ ! -v "OPTARG" ]] ; then
+                    >&2 echo "git-ab: option requires argument: --${OPTION}"
+                    exit 1
+                fi
+                excludes+=("${OPTARG}")
+                ;;
             fail)
                 fail="${OPTARG:-1}";;
             no-append)
