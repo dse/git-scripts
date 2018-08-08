@@ -5,13 +5,25 @@ set -o pipefail
 progname="$(basename "$0")"
 
 main () {
-    echo "Needs push to upstream and/or pull request:"
+    if (( porcelain )) ; then
+        echo "#NEEDS_PUSH_AND_OR_PR"
+    else
+        echo "Needs push to upstream and/or pull request:"
+    fi
     git for-each-branch ab "${git_ab_options[@]}" --ahead '{local}' '{remote}' origin/develop
 
-    echo "Needs \`git pull\` from upstream:"
+    if (( porcelain )) ; then
+        echo "#NEEDS_PULL_FROM_UPSTREAM"
+    else
+        echo "Needs \`git pull\` from upstream:"
+    fi
     git for-each-branch ab "${git_ab_options[@]}" --behind '{local}' '{remote}'
 
-    echo "Needs \`git pull\` from origin/develop:"
+    if (( porcelain )) ; then
+        echo "#NEEDS_PULL_FROM_ORIGIN_DEVELOP"
+    else
+        echo "Needs \`git pull\` from origin/develop:"
+    fi
     git for-each-branch --exclude=master ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
 }
 
@@ -20,6 +32,8 @@ usage:
   ${progname} [<option> ...]
 options:
   -z, --zero       show all ahead/behind counts including zeroes
+      --porcelain  computer friendly format
+      --tabs       with --porcelain, use tab separator
   -h, --help       show this message
   -n, --dry-run    take no action (if applicable)
   -v, --verbose    additional output (if applicable)
@@ -28,6 +42,9 @@ EOF
 declare -a git_ab_options
 
 git_ab_options=()
+porcelain=0
+tabs=0
+zero=0
 
 dry_run=0
 verbose=0
@@ -49,7 +66,16 @@ check_options () {
         fi
         case "${OPTION}" in
             z|zero)
+                zero=1
                 git_ab_options+=("--zero")
+                ;;
+            porcelain)
+                porcelain=1
+                git_ab_options+=("--porcelain")
+                ;;
+            tabs)
+                tabs=1
+                git_ab_options+=("--tabs")
                 ;;
 
             h|help)
