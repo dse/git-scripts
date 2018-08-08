@@ -15,6 +15,16 @@ main () {
     git for-each-branch --exclude=master git ab "${git_ab_options[@]}" --behind '{local}' 'origin/develop'
 }
 
+usage () { cat <<EOF; }
+usage:
+  ${progname} [<option> ...]
+options:
+      --zero       output all statuses, even when zero a/b commits
+  -h, --help       show this message
+  -n, --dry-run    take no action (if applicable)
+  -v, --verbose    additional output (if applicable)
+EOF
+
 declare -a git_ab_options
 
 git_ab_options=()
