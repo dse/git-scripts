@@ -48,6 +48,14 @@ supplied `git` subcommand.
 
 Used by `git-ab-flow` for `git flow` projects.
 
+## git-normalize-remote
+
+Converts git remote URLs of one type to another.  Currently:
+
+| From                                                                | To                                                              |
+| ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `https://github.com/`<var>owner</var>`/`<var>repository</var>`.git` | `git@github.com:`<var>owner</var>`/`<var>repository</var>`.git` |
+
 ## Other Peoples' Git Scripts
 
 Hat-tip for `git-ab` and `git-each-branch` goes out to:<br>
