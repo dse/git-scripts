@@ -50,11 +50,11 @@ Used by `git-ab-flow` for `git flow` projects.
 
 ## git-normalize-remote
 
-Converts git remote URLs of one type to another.  Currently:
+Converts git remote URLs of one type to another.  Currently supports:
 
-| From                                                                | To                                                              |
-| ------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `https://github.com/`<var>owner</var>`/`<var>repository</var>`.git` | `git@github.com:`<var>owner</var>`/`<var>repository</var>`.git` |
+| From                                                                       | To                                                                     |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| <code>https://github.com/<var>owner</var>/<var>repository</var>.git</code> | <code>git@github.com:<var>owner</var>/<var>repository</var>.git</code> |
 
 ## Other Peoples' Git Scripts
 
