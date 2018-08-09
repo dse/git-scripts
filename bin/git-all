@@ -15,6 +15,7 @@ our $short;
 our $inline;
 our $no_brackets;
 our $indent;
+our $no_pty;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
@@ -25,6 +26,7 @@ Getopt::Long::GetOptions(
     "inline"               => \$inline,
     "no-brackets"          => \$no_brackets,
     "indent"               => \$indent,
+    "no-pty"               => \$no_pty,
 ) or die("Do not type '$0 --help' for help yet.\n");
 
 $ENV{GIT_PAGER} = "cat";
@@ -35,6 +37,7 @@ $recurse->{short}       = $short       if defined $short;
 $recurse->{inline}      = $inline      if defined $inline;
 $recurse->{no_brackets} = $no_brackets if defined $no_brackets;
 $recurse->{indent}      = $indent      if defined $indent;
+$recurse->{no_pty}      = $no_pty      if defined $no_pty;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -164,6 +167,7 @@ package My::Git::Porcelain::All {
 
     sub has_io_pty {
         my ($self) = @_;
+        return 0 if $self->{no_pty};
         return $self->{has_io_pty} if defined $self->{has_io_pty};
         eval {
             require IO::Pty;
@@ -229,12 +233,19 @@ package My::Git::Porcelain::All {
         my ($stdout_read, $stdout_write);
         my ($stderr_read, $stderr_write);
         if ($self->{indent}) {
-            pipe($stdout_read, $stdout_write) or die("pipe: $!");
-            pipe($stderr_read, $stderr_write) or die("pipe: $!");
-            $stdout_write->autoflush(1);
-            $stderr_write->autoflush(1);
-            $stdout_read->autoflush(1);
-            $stderr_read->autoflush(1);
+            if ($self->has_io_pty) {
+                $stdout_read = IO::Pty->new(); # master
+                $stderr_read = IO::Pty->new(); # master
+                $stdout_write = $stdout_read->slave();
+                $stderr_write = $stderr_read->slave();
+                $stdout_write->autoflush(1);
+                $stderr_write->autoflush(1);
+            } else {
+                pipe($stdout_read, $stdout_write) or die("pipe: $!");
+                pipe($stderr_read, $stderr_write) or die("pipe: $!");
+                $stdout_write->autoflush(1);
+                $stderr_write->autoflush(1);
+            }
         }
 
         my @cmd = ($command, @arguments);
