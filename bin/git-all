@@ -9,38 +9,73 @@ use v5.10.0;
 # directory and runs the command/arguments in each of those if it's
 # not.
 
+use File::Basename qw(basename);
+
+our $progname = basename($0);
+
 our $maxdepth;
 our $no_git;
-our $short;
+our $basename;
 our $inline;
 our $no_brackets;
 our $indent;
 our $no_pty;
+our $format;
+our $separator;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
     "max-depth|maxdepth=i" => \$maxdepth,
     "no-git"               => \$no_git,
-    "short"                => \$short,
+    "basename"             => \$basename,
     "inline"               => \$inline,
     "no-brackets"          => \$no_brackets,
     "indent"               => \$indent,
     "no-pty"               => \$no_pty,
+    "format=s"             => \$format,
+    "separator=s"          => \$separator,
+    "h|help" => sub {
+        usage(); exit(0);
+    }
 ) or die("Do not type '$0 --help' for help yet.\n");
+
+###############################################################################
+sub usage { print <<"END"; }
+usage:
+  ${progname} [<option> ...] <cmd> [<arg> ...] [--- <dir> ...]
+options:
+  --help                 display this message
+  --max-depth=DEPTH      maximum nesting level to find subdirectories
+  --no-git               run <cmd> [<arg> ...] instead of git <cmd> [<arg> ...]
+  --basename             only show basenames, not full directory pathnames
+  --inline               prepend directory names to command stdout/stderr
+  --no-brackets          no brackets around directory names
+  --indent               indent command stdout/stderr
+  --format=FORMAT        e.g., --format='project %s:'
+  --separator=SEPARATOR  between directory name and command stdout/stderr
+                         can specify escapes, e.g., --separator='\\t'
+debugging:
+  --no-pty               don't use pseudoterminals
+END
+###############################################################################
 
 $ENV{GIT_PAGER} = "cat";
 my $recurse = My::Git::Porcelain::All->new();
 $recurse->{maxdepth}    = $maxdepth    if defined $maxdepth;
 $recurse->{no_git}      = $no_git      if defined $no_git;
-$recurse->{short}       = $short       if defined $short;
+$recurse->{basename}    = $basename    if defined $basename;
 $recurse->{inline}      = $inline      if defined $inline;
 $recurse->{no_brackets} = $no_brackets if defined $no_brackets;
 $recurse->{indent}      = $indent      if defined $indent;
 $recurse->{no_pty}      = $no_pty      if defined $no_pty;
+$recurse->{format}      = $format      if defined $format;
+$recurse->{separator}   = $separator   if defined $separator;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
+
+    use String::Unescape;
 
     sub new {
         my ($class) = @_;
@@ -217,6 +252,7 @@ package My::Git::Porcelain::All {
         my ($self, %args) = @_;
         my $depth = $args{depth} // 1;
         my $dir = $args{directory} // ".";
+        $dir =~ s{^\.\/(?=.)}{};
         my $reldir = $args{relative_directory};
         my $command = $args{command};
         my @arguments = @{$args{arguments}};
@@ -225,26 +261,32 @@ package My::Git::Porcelain::All {
             return;
         }
 
-        my $format = $self->{no_brackets} ? "%s" : "[%s]";
-        my $print  = $self->{short} ? basename($dir) : $dir;
-        my $nl     = $self->{inline} ? " " : "\n";
-        printf($format . $nl, $print);
+        my $format = $self->{format};
+        if (!defined $format) {
+            $format = $self->{no_brackets} ? "%s" : "[%s]";
+            if ($self->{inline}) {
+                $format .= $self->{no_brackets} ? ":" : " ";
+            }
+        }
+        my $print = $self->{basename} ? basename($dir) : $dir;
+        if (!$self->{inline}) {
+            printf($format . "\n", $print);
+        }
+        my $inline_prefix = $self->{inline} && sprintf($format, $print);
+        my $inline_separator = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
+        my $use_pipes_and_such = $self->{indent} || $self->{inline};
 
         my ($stdout_read, $stdout_write);
         my ($stderr_read, $stderr_write);
-        if ($self->{indent}) {
+        if ($use_pipes_and_such) {
             if ($self->has_io_pty) {
                 $stdout_read = IO::Pty->new(); # master
                 $stderr_read = IO::Pty->new(); # master
                 $stdout_write = $stdout_read->slave();
                 $stderr_write = $stderr_read->slave();
-                $stdout_write->autoflush(1);
-                $stderr_write->autoflush(1);
             } else {
                 pipe($stdout_read, $stdout_write) or die("pipe: $!");
                 pipe($stderr_read, $stderr_write) or die("pipe: $!");
-                $stdout_write->autoflush(1);
-                $stderr_write->autoflush(1);
             }
         }
 
@@ -263,7 +305,7 @@ package My::Git::Porcelain::All {
                     die("chdir $reldir: $!");
                 }
             }
-            if ($self->{indent}) {
+            if ($use_pipes_and_such) {
                 open(STDOUT, ">&", $stdout_write) or die("open: $!");
                 open(STDERR, ">&", $stderr_write) or die("open: $!");
             }
@@ -299,7 +341,7 @@ package My::Git::Porcelain::All {
                 }
             };
 
-            if ($self->{indent}) {
+            if ($use_pipes_and_such) {
                 close($stdout_write) or die("close: $!");
                 close($stderr_write) or die("close: $!");
 
@@ -309,8 +351,17 @@ package My::Git::Porcelain::All {
                 } elsif (!$pid1) { # child
                     close($stderr_read) or die("close: $!");
                     select STDOUT; $| = 1;
+                    local $_;
                     while (<$stdout_read>) {
-                        print STDOUT "    $_";
+                        s{\R\z}{};
+                        if ($self->{inline}) {
+                            print STDOUT $inline_prefix;
+                            print STDOUT $inline_separator if defined $inline_separator;
+                        } elsif ($self->{indent}) {
+                            print STDOUT "    ";
+                        }
+                        print STDOUT "$_\n";
+                        STDOUT->flush();
                     }
                     close($stdout_read) or die("close: $!");
                     exit;
@@ -322,8 +373,17 @@ package My::Git::Porcelain::All {
                 } elsif (!$pid2) { # child
                     close($stdout_read) or die("close: $!");
                     select STDERR; $| = 1;
+                    local $_;
                     while (<$stderr_read>) {
-                        print STDERR "    $_";
+                        s{\R\z}{};
+                        if ($self->{inline}) {
+                            print STDERR $inline_prefix;
+                            print STDERR $inline_separator if defined $inline_separator;
+                        } elsif ($self->{indent}) {
+                            print STDERR "    ";
+                        }
+                        print STDERR "$_\n";
+                        STDERR->flush();
                     }
                     close($stderr_read) or die("close: $!");
                     exit;
