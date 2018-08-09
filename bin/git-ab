@@ -5,12 +5,18 @@ set -o pipefail
 
 # TODO:
 #   git-ab <a> [<b> [<c> [<d> ...]]]
-#   --abac, --abacad  check a against b, a against c, a against d, etc.
-#   --abbc, --abbccd  check a against b, b against c, c against d, etc.  (the default)
+#   --ABAC, --ABACAD  check a against b, a against c, a against d, etc.
+#   --ABBC, --ABBCCD  check a against b, b against c, c against d, etc.  (the default)
 # where:
 #   <a> defaults to current local branch
 #   <b> defaults to <a>'s remote
 #   <c>, <d>, etc. have no defaults
+# ALSO TODO PERHAPS:
+#   --skip-local, --skip-A
+#   --skip-remote, --skip-B
+#   --compare=AB,AC
+#     may require change of porcelain output format:
+#     A <A ahead of B> <A behind B> B A <A ahead of C> <A behind C> C
 
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
