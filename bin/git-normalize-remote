@@ -1,0 +1,109 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+use v5.10.0;
+
+use File::Basename qw(basename);
+use Getopt::Long;
+use String::ShellQuote;
+
+our $progname = basename($0);
+
+our $dry_run;
+our $verbose;
+
+Getopt::Long::Configure("bundling", "gnu_compat");
+Getopt::Long::GetOptions(
+    "n|dry-run" => \$dry_run,
+    "v|verbose+" => \$verbose,
+    "h|help" => sub {
+        usage(); exit(0);
+    }
+) or die("Type '$0 --help' for help.\n");
+
+###############################################################################
+sub usage { print <<"EOF"; }
+usage:
+  $progname [<option> ...] [<remote> ...]
+options:
+  -n, --dry-run
+  -h, --help
+  -v, --verbose
+defaults:
+  If no <remote> arguments are specified, uses 'origin' and 'upstream'.
+EOF
+###############################################################################
+
+if (!scalar @ARGV) {
+    normalize_remote("origin");
+    normalize_remote("upstream");
+} else {
+    foreach my $remote (@ARGV) {
+        normalize_remote($remote);
+    }
+}
+
+sub normalize_remote {
+    my ($remote) = @_;
+    my $url = get_remote_url($remote);
+    if (!defined $url) {
+        return;
+    }
+    my $new_url = normalize_url($url);
+    if ($url ne $new_url) {
+        set_remote_url($remote, $new_url);
+    } else {
+        if ($verbose) {
+            warn("not changing remote $remote at $url\n");
+        }
+    }
+}
+
+sub get_remote_url {
+    my ($remote) = @_;
+    my @cmd = ("git", "remote", "get-url", $remote);
+    my ($read, $write);
+    pipe($read, $write);
+    my $pid = fork;
+    if (!defined $pid) {
+        die("fork: $!");
+    }
+    if (!$pid) {
+        close(STDERR);
+        close($read);
+        open(STDOUT, ">&", $write);
+        exec(@cmd) or die("exec: $!");
+    }
+    close($write) or die("close: $!");
+    local $/ = undef;
+    my $url = <$read>;
+    close($read) or die("close: $!");
+    my $wait = wait();
+    if ($?) {
+        return undef;
+    }
+    $url =~ s{\R\z}{};
+    return $url;
+}
+
+sub set_remote_url {
+    my ($remote, $url) = @_;
+    my @cmd = ("git", "remote", "set-url", $remote, $url);
+    if ($verbose || $dry_run) {
+        warn(shell_quote(@cmd), "\n");
+    }
+    return 1 if $dry_run;
+    if (system(@cmd)) {
+        return 0;
+    }
+    return 1;
+}
+
+sub normalize_url {
+    my ($url) = @_;
+    if ($url =~ m{^https?://(?:www\.)?github\.com/([^/\\]+)/([^/\\]+)\.git$}i) {
+        my ($owner, $repos) = ($1, $2);
+        return sprintf("git\@github.com:%s/%s.git", $owner, $repos);
+    }
+    return $url;
+}
