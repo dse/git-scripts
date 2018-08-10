@@ -22,6 +22,8 @@ our $indent;
 our $no_pty;
 our $format;
 our $separator;
+our $verbose;
+our $dry_run;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
@@ -35,6 +37,8 @@ Getopt::Long::GetOptions(
     "no-pty"               => \$no_pty,
     "format=s"             => \$format,
     "separator=s"          => \$separator,
+    "v|verbose+"           => \$verbose,
+    "n|dry-run"            => \$dry_run,
     "h|help" => sub {
         usage(); exit(0);
     }
@@ -55,6 +59,8 @@ options:
   --format=FORMAT        e.g., --format='project %s:'
   --separator=SEPARATOR  between directory name and command stdout/stderr
                          can specify escapes, e.g., --separator='\\t'
+  --verbose
+  --dry-run
 debugging:
   --no-pty               don't use pseudoterminals
 END
@@ -71,6 +77,8 @@ $recurse->{indent}      = $indent      if defined $indent;
 $recurse->{no_pty}      = $no_pty      if defined $no_pty;
 $recurse->{format}      = $format      if defined $format;
 $recurse->{separator}   = $separator   if defined $separator;
+$recurse->{verbose}     = $verbose     if defined $verbose;
+$recurse->{dry_run}     = $dry_run     if defined $dry_run;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -199,6 +207,7 @@ package My::Git::Porcelain::All {
     use Cwd;
     use File::Spec;
     use File::Basename qw(dirname basename);
+    use String::ShellQuote;
 
     sub has_io_pty {
         my ($self) = @_;
@@ -293,6 +302,14 @@ package My::Git::Porcelain::All {
         my @cmd = ($command, @arguments);
         if (!$self->{no_git}) {
             unshift(@cmd, "git");
+        }
+
+        if ($self->{verbose} || $self->{dry_run}) {
+            warn(sprintf("+ %s\n", shell_quote(@cmd)));
+        }
+
+        if ($self->{dry_run}) {
+            return;
         }
 
         my $pid = fork();
