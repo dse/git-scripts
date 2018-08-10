@@ -5,7 +5,7 @@ set -o pipefail
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
-. "${dirname}/../share/getlongopts-bash/getlongopts.sh"
+. "${dirname}/../share/bash-getlongopts/getlongopts.sh"
 . "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
