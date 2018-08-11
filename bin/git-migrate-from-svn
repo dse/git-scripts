@@ -219,6 +219,11 @@ final-setup () {
     >&2 echo ""
     >&2 echo "    $(realpath "${projectname}")"
     >&2 echo ""
+    >&2 echo "Within that working copy you may wish to remove the"
+    >&2 echo "'initial-origin' remote I created:"
+    >&2 echo ""
+    >&2 echo "    git remote remove initial-origin"
+    >&2 echo ""
     >&2 echo "All done."
 }
 
