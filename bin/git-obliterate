@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+if (( ! $# )) ; then
+    >&2 echo "usage: git-obliterate <file-or-directory-name>"
+    exit 1
+fi
+
+# Yeah, PHP.  I'm an adult, I do what I want.
+obliterate="$(php -r 'print escapeshellarg($argv[1]);' "${1}")"
+
+git filter-branch -f --prune-empty --index-filter "git rm -rf --cached --ignore-unmatch ${obliterate}" --tag-name-filter cat -- --all
