@@ -27,19 +27,47 @@ main () {
     local -a clone_cmd
     local -a no_edit_authors_cmd
 
-    initialize
-    edit-authors-file
-    clone-repository
-    convert-ignores
-    fix-tags
-    fix-branches
-    remove-pegs
-    final-setup
+    case "${step}" in
+        "")
+            initialize
+            edit-authors-file
+            clone-repository
+            convert-ignores
+            fix-tags
+            fix-branches
+            remove-pegs
+            final-setup
+            ;;
+        initialize|edit-authors-file|clone-repository|convert-ignores|fix-tags|fix-branches|remove-pegs|final-setup)
+            "${step}"
+            ;;
+        *)
+            >&2 echo "${progname}: Invalid step: ${step}"
+            >&2 echo "Exiting."
+            exit 1
+            ;;
+    esac
 }
 
 usage () { cat <<EOF; }
 usage:
   ${progname} [<option> ...] <svn-url> <projectname>
+options:
+      --help
+      --dry-run (does nothing)
+      --verbose (does nothing)
+      --[no-]stdlayout
+      --no-edit-authors-file
+  -x, --xtrace
+steps:
+      --step=initialize
+      --step=edit-authors-file
+      --step=clone-repository
+      --step=convert-ignores
+      --step=fix-tags
+      --step=fix-branches
+      --step=remove-pegs
+      --step=final-setup
 EOF
 
 initialize () {
@@ -151,13 +179,22 @@ convert-ignores () {
     (
         cd "${projectname}.tmp"
         >&2 echo "Converting svn:ignore properties ..."
-        git svn show-ignore > .gitignore
+
+        git svn show-ignore > .gitignore || true
         if grep . .gitignore >/dev/null 2>/dev/null ; then
             git add .gitignore
             git commit -m 'Convert svn:ignore properties to .gitignore.'
-        else
-            rm .gitignore || true
-        fi
+            return
+        else true ; fi
+
+        git svn show-ignore --id=trunk > .gitignore || true
+        if grep . .gitignore >/dev/null 2>/dev/null ; then
+            git add .gitignore
+            git commit -m 'Convert svn:ignore properties to .gitignore.'
+            return
+        else true ; fi
+        
+        rm .gitignore || true
     )
 }
 
@@ -210,7 +247,7 @@ final-setup () {
     local realpath="$(realpath "${projectname}.tmp.git")"
     (
         cd "${projectname}.tmp.git"
-        git initialize --bare
+        git init --bare
     )
     (
         cd "${projectname}.tmp"
@@ -252,6 +289,7 @@ final-setup () {
 
 no_edit_authors=0
 stdlayout=0
+step=""
 
 declare -a longoptions
 longoptions=(
@@ -261,6 +299,7 @@ longoptions=(
     no-stdlayout 0
     help 0
     xtrace 0
+    step 1
 )
 
 check_options () {
@@ -275,6 +314,8 @@ check_options () {
                 stdlayout=0;;
             x|xtrace)
                 set -x;;
+            step)
+                step="${OPTARG}";;
             
             h|help)
                 usage; exit 0;;
