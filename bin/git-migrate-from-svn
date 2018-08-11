@@ -5,10 +5,18 @@ set -o pipefail
 # There are fifty million tutorials about migrating Subversion
 # projects to Git.
 #
-# https://www.atlassian.com/git/tutorials/migrating-prepare
+# - <https://git-scm.com/book/en/v2/Git-and-Other-Systems-Migrating-to-Git>
+# 
+#   This is where I got most of the material here.
+# 
+# - <https://www.atlassian.com/git/tutorials/migrating-prepare>
+# 
 #   This one sucks because it requires a .jar.
-# https://john.albin.net/git/convert-subversion-to-git
+# 
+# - <https://john.albin.net/git/convert-subversion-to-git>
+# 
 #   This one added a step about converting svn:ignore properties.
+#   I also got the bits about the authors file from here.
 
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
