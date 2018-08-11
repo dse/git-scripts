@@ -2,6 +2,14 @@
 set -o errexit
 set -o pipefail
 
+# There are fifty million tutorials about migrating Subversion
+# projects to Git.
+#
+# https://www.atlassian.com/git/tutorials/migrating-prepare
+#   This one sucks because it requires a .jar.
+# https://john.albin.net/git/convert-subversion-to-git
+#   This one added a step about converting svn:ignore properties.
+
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
@@ -19,9 +27,10 @@ main () {
     local -a clone_cmd
     local -a no_edit_authors_cmd
 
-    init
-    authors
-    clone
+    initialize
+    edit-authors-file
+    clone-repository
+    convert-ignores
     fix-tags
     fix-branches
     remove-pegs
@@ -33,7 +42,7 @@ usage:
   ${progname} [<option> ...] <svn-url> <projectname>
 EOF
 
-init () {
+initialize () {
     clone_cmd=(
         git svn clone
         "${svnurl}"
@@ -52,7 +61,7 @@ init () {
 
     no_edit_authors_cmd=(
         "${progname}"
-        --no-edit-authors
+        --no-edit-authors-file
     )
     if (( $stdlayout )) ; then
         no_edit_authors_cmd+=(
@@ -65,11 +74,11 @@ init () {
     )
 }
 
-authors () {
+edit-authors-file () {
     if (( no_edit_authors )) ; then
         if [[ ! -e "${projectname}-authors.txt" ]] ; then
             >&2 echo "${projectname}-authors.txt does not exist."
-            >&2 echo "You need to run this program without the --no-edit-authors option."
+            >&2 echo "You need to run this program without the --no-edit-authors-file option."
             >&2 echo "Exiting."
             exit 1
         else
@@ -115,7 +124,7 @@ authors () {
     else true ; fi
 }
 
-clone () {
+clone-repository () {
     if [[ ! -e "${projectname}-authors.txt" ]] ; then
         >&2 echo "${projectname}-authors.txt does not exist."
         >&2 echo "Exiting."
@@ -136,6 +145,20 @@ clone () {
     rm -frv "${projectname}.tmp.git" || true
     
     "${clone_cmd[@]}"
+}
+
+convert-ignores () {
+    (
+        cd "${projectname}.tmp"
+        >&2 echo "Converting svn:ignore properties ..."
+        git svn show-ignore > .gitignore
+        if grep . .gitignore >/dev/null 2>/dev/null ; then
+            git add .gitignore
+            git commit -m 'Convert svn:ignore properties to .gitignore.'
+        else
+            rm .gitignore || true
+        fi
+    )
 }
 
 fix-tags () {
@@ -187,7 +210,7 @@ final-setup () {
     local realpath="$(realpath "${projectname}.tmp.git")"
     (
         cd "${projectname}.tmp.git"
-        git init --bare
+        git initialize --bare
     )
     (
         cd "${projectname}.tmp"
@@ -232,19 +255,26 @@ stdlayout=0
 
 declare -a longoptions
 longoptions=(
+    no-edit-authors-file 0
     no-edit-authors 0
     stdlayout 0
+    no-stdlayout 0
     help 0
+    xtrace 0
 )
 
 check_options () {
     local OPTION
-    while getlongopts 'hnv' OPTION "${longoptions[@]}" -- "$@" ; do
+    while getlongopts 'hnvx' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
-            no-edit-authors)
+            no-edit-authors-file|no-edit-authors)
                 no_edit_authors=1;;
             stdlayout)
                 stdlayout=1;;
+            no-stdlayout)
+                stdlayout=0;;
+            x|xtrace)
+                set -x;;
             
             h|help)
                 usage; exit 0;;
