@@ -16,6 +16,10 @@ main () {
     fi
     local svnurl="$1"; shift
     local projectname="$1"; shift
+    local -a clone_cmd
+    local -a no_edit_authors_cmd
+
+    init
     authors
     clone
     fix-tags
@@ -29,12 +33,59 @@ usage:
   ${progname} [<option> ...] <svn-url> <projectname>
 EOF
 
+init () {
+    clone_cmd=(
+        git svn clone
+        "${svnurl}"
+        --authors-file="${projectname}-authors.txt"
+        --no-metadata
+        --prefix ""
+    )
+    if (( $stdlayout )) ; then
+        clone_cmd+=(
+            --stdlayout
+        )
+    else true ; fi
+    clone_cmd+=(
+        "${projectname}.tmp"
+    )
+
+    no_edit_authors_cmd=(
+        "${progname}"
+        --no-edit-authors
+    )
+    if (( $stdlayout )) ; then
+        no_edit_authors_cmd+=(
+            --stdlayout
+        )
+    else true ; fi
+    no_edit_authors_cmd+=(
+        "${svnurl}"
+        "${projectname}"
+    )
+}
+
 authors () {
+    if (( no_edit_authors )) ; then
+        if [[ ! -e "${projectname}-authors.txt" ]] ; then
+            >&2 echo "${projectname}-authors.txt does not exist."
+            >&2 echo "You need to run this program without the --no-edit-authors option."
+            >&2 echo "Exiting."
+            exit 1
+        else
+            return 0
+        fi
+    else true ; fi
     if [[ -e "${projectname}-authors.txt" ]] ; then
         >&2 echo "${projectname}-authors.txt already exists."
+        >&2 echo "You may wish to inspect it."
+        >&2 echo "If it's good, run this program again via the following command:"
+        >&2 echo ""
+        >&2 echo "    ${no_edit_authors_cmd[@]}"
+        >&2 echo ""
         >&2 echo "Exiting."
         exit 1
-    fi
+    else true ; fi
     svn log -q "${svnurl}" | awk -F '|' '/^r/ {sub("^ ", "", $2); sub(" $", "", $2); print $2" = "$2" <"$2">"}' | sort -u > "${projectname}-authors.txt"
     if [[ -n "${VISUAL}" ]] ; then
         $VISUAL "${projectname}-authors.txt"
@@ -52,11 +103,16 @@ authors () {
         >&2 echo ""
         >&2 echo "Then run this program again via the following command:"
         >&2 echo ""
-        >&2 echo "    ${progname} --no-edit-authors ${svnurl@Q} ${projectname@Q}"
+        >&2 echo "    ${no_edit_authors_cmd[@]}"
         >&2 echo ""
         >&2 echo "Exiting."
         exit 0
     fi
+    if ! grep . "${projectname}-authors.txt" >/dev/null 2>/dev/null ; then
+        >&2 echo "${projectname}-authors.txt does not exists or is blank."
+        >&2 echo "Aborting."
+        exit 1
+    else true ; fi
 }
 
 clone () {
@@ -79,22 +135,7 @@ clone () {
     rm -frv "${projectname}.tmp"     || true
     rm -frv "${projectname}.tmp.git" || true
     
-    local -a cmd
-    cmd=(
-        git svn clone
-        "${svnurl}"
-        --authors-file="${projectname}-authors.txt"
-        --no-metadata
-        --prefix ""
-    )
-    if (( $stdlayout )) ; then
-        cmd+=(
-            --stdlayout
-        )
-    else true ; fi
-    cmd+=(
-        "${projectname}.tmp"
-    )
+    "${clone_cmd[@]}"
 }
 
 fix-tags () {
