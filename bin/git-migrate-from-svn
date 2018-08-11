@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
+. "${dirname}/../share/bash-getlongopts/getlongopts.sh"
+. "${dirname}/../share/git-scripts/git-scripts.sh"
+
+main () {
+    if (( $# < 2 )) ; then
+        >&2 echo "${progname}: not enough arguments."
+        >&2 echo "Type '$0 --help' for help."
+        exit 1
+    fi
+    local svnurl="$1"; shift
+    local projectname="$1"; shift
+    authors
+    clone
+    fix-tags
+    fix-branches
+    remove-pegs
+    final-setup
+}
+
+usage () { cat <<EOF; }
+usage:
+  ${progname} [<option> ...] <svn-url> <projectname>
+EOF
+
+authors () {
+    if [[ -e "${projectname}-authors.txt" ]] ; then
+        >&2 echo "${projectname}-authors.txt already exists."
+        >&2 echo "Exiting."
+        exit 1
+    fi
+    svn log -q "${svnurl}" | awk -F '|' '/^r/ {sub("^ ", "", $2); sub(" $", "", $2); print $2" = "$2" <"$2">"}' | sort -u > "${projectname}-authors.txt"
+    if [[ -n "${VISUAL}" ]] ; then
+        $VISUAL "${projectname}-authors.txt"
+    elif [[ -n "${EDITOR}" ]] ; then
+        $EDITOR "${projectname}-authors.txt"
+    elif which nano >/dev/null 2>/dev/null ; then
+        nano "${projectname}-authors.txt"
+    elif which pico >/dev/null 2>/dev/null ; then
+        pico "${projectname}-authors.txt"
+    else
+        >&2 echo "Sorry, I can't find an editor for you."
+        >&2 echo "If you can find an editor, use it to edit the file:"
+        >&2 echo ""
+        >&2 echo "    ${projectname}-authors.txt"
+        >&2 echo ""
+        >&2 echo "Then run this program again via the following command:"
+        >&2 echo ""
+        >&2 echo "    ${progname} --no-edit-authors ${svnurl@Q} ${projectname@Q}"
+        >&2 echo ""
+        >&2 echo "Exiting."
+        exit 0
+    fi
+}
+
+clone () {
+    if [[ ! -e "${projectname}-authors.txt" ]] ; then
+        >&2 echo "${projectname}-authors.txt does not exist."
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
+    if [[ -e "${projectname}" ]] ; then
+        >&2 echo "${projectname} already exists."
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
+    if [[ -e "${projectname}.git" ]] ; then
+        >&2 echo "${projectname}.git already exists."
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
+
+    rm -frv "${projectname}.tmp"     || true
+    rm -frv "${projectname}.tmp.git" || true
+    
+    local -a cmd
+    cmd=(
+        git svn clone
+        "${svnurl}"
+        --authors-file="${projectname}-authors.txt"
+        --no-metadata
+        --prefix ""
+    )
+    if (( $stdlayout )) ; then
+        cmd+=(
+            --stdlayout
+        )
+    else true ; fi
+    cmd+=(
+        "${projectname}.tmp"
+    )
+}
+
+fix-tags () {
+    (
+        local b
+        cd "${projectname}.tmp"
+        >&2 echo "Fixing branches ..."
+        for b in $(
+                      git for-each-ref --format='%(refname:short)' refs/remotes
+                  ); do
+            git branch "$b" "refs/remotes/$b"
+            git branch -D -r "$b" || true
+            git tag --delete "$b" || true
+        done
+    )
+}
+
+fix-branches () {
+    (
+        local t
+        cd "${projectname}.tmp"
+        >&2 echo "Fixing tags ..."
+        for t in $(
+                      git for-each-ref --format='%(refname:short)' refs/remotes/tags
+                  ); do
+            git tag "${t/tags\//}" "$t"
+            git branch -D -r "$t" || true
+            git tag --delete "$t" || true
+        done
+    )
+}
+
+remove-pegs () {
+    (
+        local p
+        cd "${projectname}.tmp"
+        >&2 echo "Removing peg revisions ..."
+        for p in $(
+                      git for-each-ref --format='%(refname:short)' | grep @
+                  ); do
+            git branch -D "$p" || true
+            git tag --delete "$p" || true
+        done
+    )
+}
+
+final-setup () {
+    mkdir -p "${projectname}.tmp.git"
+    local realpath="$(realpath "${projectname}.tmp.git")"
+    (
+        cd "${projectname}.tmp.git"
+        git init --bare
+    )
+    (
+        cd "${projectname}.tmp"
+        git remote add initial-origin "${realpath}"
+        git push --all initial-origin
+    )
+    if [[ -e "${projectname}.git" ]] ; then
+        >&2 echo "Ugh, somehow ${projectname}.git exists now."
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
+    mv "${projectname}.tmp.git" "${projectname}.git"
+    if [[ -e "${projectname}" ]] ; then
+        >&2 echo "Ugh, somehow ${projectname} exists now."
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
+    mv "${projectname}.tmp" "${projectname}"
+    realpath="$(realpath "${projectname}.git")"
+    (
+        cd "${projectname}"
+        git remote set-url initial-origin "${realpath}"
+    )
+    >&2 echo "Cool.  You have a bare repository in:"
+    >&2 echo ""
+    >&2 echo "    $(realpath "${projectname}.git")"
+    >&2 echo ""
+    >&2 echo "And a working copy in:"
+    >&2 echo ""
+    >&2 echo "    $(realpath "${projectname}")"
+    >&2 echo ""
+    >&2 echo "All done."
+}
+
+no_edit_authors=0
+stdlayout=0
+
+declare -a longoptions
+longoptions=(
+    no-edit-authors 0
+    stdlayout 0
+    help 0
+)
+
+check_options () {
+    local OPTION
+    while getlongopts 'hnv' OPTION "${longoptions[@]}" -- "$@" ; do
+        case "${OPTION}" in
+            no-edit-authors)
+                no_edit_authors=1;;
+            stdlayout)
+                stdlayout=1;;
+            
+            h|help)
+                usage; exit 0;;
+            n|dry-run)
+                dry_run=1;;
+            v|verbose)
+                verbose=$((verbose + 1));;
+            "?")
+                exit 1;;
+            ??*)                # length >= 2
+                >&2 echo "${progname}: invalid option: --${OPTION}"; exit 1;;
+            *)                  # length < 2
+                >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
+        esac
+    done
+}
+
+###############################################################################
+
+check_options "$@"
+shift $((OPTIND - 1))
+main "$@"
