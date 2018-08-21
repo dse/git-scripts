@@ -30,6 +30,7 @@ main () {
         >&2 echo "Type '$0 --help' for help."
         exit 1
     fi
+
     local svnurl="$1"; shift
     local projectname="$1"; shift
     local -a clone_cmd
@@ -79,10 +80,14 @@ steps:
 EOF
 
 initialize () {
+    if [[ -z "${authors_file}" ]] ; then
+        authors_file="${projectname}-authors.txt"
+    fi
+
     clone_cmd=(
         git svn clone
         "${svnurl}"
-        --authors-file="${projectname}-authors.txt"
+        --authors-file="${authors_file}"
         --no-metadata
         --prefix ""
     )
@@ -112,8 +117,8 @@ initialize () {
 
 edit-authors-file () {
     if (( no_edit_authors )) ; then
-        if [[ ! -e "${projectname}-authors.txt" ]] ; then
-            >&2 echo "${projectname}-authors.txt does not exist."
+        if [[ ! -e "${authors_file}" ]] ; then
+            >&2 echo "${authors_file} does not exist."
             >&2 echo "You need to run this program without the --no-edit-authors-file option."
             >&2 echo "Exiting."
             exit 1
@@ -121,8 +126,8 @@ edit-authors-file () {
             return 0
         fi
     else true ; fi
-    if [[ -e "${projectname}-authors.txt" ]] ; then
-        >&2 echo "${projectname}-authors.txt already exists."
+    if [[ -e "${authors_file}" ]] ; then
+        >&2 echo "${authors_file} already exists."
         >&2 echo "You may wish to inspect it."
         >&2 echo "If it's good, run this program again via the following command:"
         >&2 echo ""
@@ -131,20 +136,20 @@ edit-authors-file () {
         >&2 echo "Exiting."
         exit 1
     else true ; fi
-    svn log -q "${svnurl}" | awk -F '|' '/^r/ {sub("^ ", "", $2); sub(" $", "", $2); print $2" = "$2" <"$2">"}' | sort -u > "${projectname}-authors.txt"
+    svn log -q "${svnurl}" | awk -F '|' '/^r/ {sub("^ ", "", $2); sub(" $", "", $2); print $2" = "$2" <"$2">"}' | sort -u > "${authors_file}"
     if [[ -n "${VISUAL}" ]] ; then
-        $VISUAL "${projectname}-authors.txt"
+        $VISUAL "${authors_file}"
     elif [[ -n "${EDITOR}" ]] ; then
-        $EDITOR "${projectname}-authors.txt"
+        $EDITOR "${authors_file}"
     elif which nano >/dev/null 2>/dev/null ; then
-        nano "${projectname}-authors.txt"
+        nano "${authors_file}"
     elif which pico >/dev/null 2>/dev/null ; then
-        pico "${projectname}-authors.txt"
+        pico "${authors_file}"
     else
         >&2 echo "Sorry, I can't find an editor for you."
         >&2 echo "If you can find an editor, use it to edit the file:"
         >&2 echo ""
-        >&2 echo "    ${projectname}-authors.txt"
+        >&2 echo "    ${authors_file}"
         >&2 echo ""
         >&2 echo "Then run this program again via the following command:"
         >&2 echo ""
@@ -153,16 +158,16 @@ edit-authors-file () {
         >&2 echo "Exiting."
         exit 0
     fi
-    if ! grep . "${projectname}-authors.txt" >/dev/null 2>/dev/null ; then
-        >&2 echo "${projectname}-authors.txt does not exists or is blank."
+    if ! grep . "${authors_file}" >/dev/null 2>/dev/null ; then
+        >&2 echo "${authors_file} does not exists or is blank."
         >&2 echo "Aborting."
         exit 1
     else true ; fi
 }
 
 clone-repository () {
-    if [[ ! -e "${projectname}-authors.txt" ]] ; then
-        >&2 echo "${projectname}-authors.txt does not exist."
+    if [[ ! -e "${authors_file}" ]] ; then
+        >&2 echo "${authors_file} does not exist."
         >&2 echo "Exiting."
         exit 1
     else true ; fi
@@ -298,6 +303,7 @@ final-setup () {
 no_edit_authors=0
 stdlayout=0
 step=""
+authors_file=""
 
 declare -a longoptions
 longoptions=(
@@ -308,6 +314,7 @@ longoptions=(
     help 0
     xtrace 0
     step 1
+    authors-file 1
 )
 
 check_options () {
@@ -324,6 +331,8 @@ check_options () {
                 set -x;;
             step)
                 step="${OPTARG}";;
+            authors-file)
+                authors_file="${OPTARG}";;
             
             h|help)
                 usage; exit 0;;
