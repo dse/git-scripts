@@ -67,6 +67,7 @@ options:
       --verbose (does nothing)
       --[no-]stdlayout
       --no-edit-authors-file
+      --authors-file=FILENAME
   -x, --xtrace
 steps:
       --step=initialize
