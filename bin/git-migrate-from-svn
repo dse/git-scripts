@@ -25,6 +25,10 @@ dirname="$(dirname "$0")"
 . "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
+    #               program  package
+    require_package git-svn  git-svn
+    require_package realpath realpath
+
     if (( $# < 2 )) ; then
         >&2 echo "${progname}: not enough arguments."
         >&2 echo "Type '$0 --help' for help."
@@ -50,6 +54,14 @@ main () {
         initialize|edit-authors-file|clone-repository|convert-ignores|fix-tags|fix-branches|remove-pegs|final-setup)
             "${step}"
             ;;
+        1)  initialize;;
+        2)  edit-authors-file;;
+        3)  clone-repository;;
+        4)  convert-ignores;;
+        5)  fix-tags;;
+        6)  fix-branches;;
+        7)  remove-pegs;;
+        8)  final-setup;;
         *)
             >&2 echo "${progname}: Invalid step: ${step}"
             >&2 echo "Exiting."
@@ -63,21 +75,17 @@ usage:
   ${progname} [<option> ...] <svn-url> <projectname>
 options:
       --help
-      --dry-run (does nothing)
-      --verbose (does nothing)
       --[no-]stdlayout
       --no-edit-authors-file
-      --authors-file=FILENAME
+  -A, --authors-file=FILENAME
+  -c, --config NAME=VALUE
+      --no-compression
+      --big-file-threshold=<bytes>|<num>k|<num>m|<num>g
   -x, --xtrace
+      --step=<number>|<step>
 steps:
-      --step=initialize
-      --step=edit-authors-file
-      --step=clone-repository
-      --step=convert-ignores
-      --step=fix-tags
-      --step=fix-branches
-      --step=remove-pegs
-      --step=final-setup
+  1 initialize   2 edit-authors-file   3 clone-repository   4 convert-ignores
+  5 fix-tags     6 fix-branches        7 remove-pegs        8 final-setup
 EOF
 
 initialize () {
@@ -301,10 +309,13 @@ final-setup () {
     >&2 echo "All done."
 }
 
+declare -a git_config_args
+
 no_edit_authors=0
 stdlayout=0
 step=""
 authors_file=""
+git_config_args=()
 
 declare -a longoptions
 longoptions=(
@@ -316,11 +327,20 @@ longoptions=(
     xtrace 0
     step 1
     authors-file 1
+    config 1
+    no-compression 0
+    big-file-threshold 1
 )
+
+set_git_config () {
+    git_config_args+=(
+        -c "${OPTARG}"
+    )
+}
 
 check_options () {
     local OPTION
-    while getlongopts 'hnvx' OPTION "${longoptions[@]}" -- "$@" ; do
+    while getlongopts 'hnvxA:c:' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
             no-edit-authors-file|no-edit-authors)
                 no_edit_authors=1;;
@@ -332,15 +352,25 @@ check_options () {
                 set -x;;
             step)
                 step="${OPTARG}";;
-            authors-file)
+            A|authors-file)
                 authors_file="${OPTARG}";;
+            c|config)
+                set_git_config "${OPTARG}";;
+            no-compression)
+                set_git_config "core.compression=0";;
+            big-file-threshold)
+                set_git_config "core.bigFileThreshold=${OPTARG}";;
             
             h|help)
                 usage; exit 0;;
             n|dry-run)
-                dry_run=1;;
+                # dry_run=1;;
+                >&2 echo "-n/--dry-run does nothing.  Exiting."
+                exit 1;;
             v|verbose)
-                verbose=$((verbose + 1));;
+                # verbose=$((verbose + 1));;
+                >&2 echo "-v/--verbose does nothing.  Exiting."
+                exit 1;;
             "?")
                 exit 1;;
             ??*)                # length >= 2
@@ -349,6 +379,28 @@ check_options () {
                 >&2 echo "${progname}: invalid option: -${OPTION}"; exit 1;;
         esac
     done
+}
+
+require_package () {
+    local program="$1"; shift
+    local package_name="$1"; shift
+    if ! which "${program}" >/dev/null 2>/dev/null ; then
+        >&2 echo "\`${program}\` utility not found."
+        >&2 echo ""
+        if which apt >/dev/null 2>/dev/null ; then
+            >&2 echo "Run:  sudo apt install ${packagename}"
+            >&2 echo ""
+            >&2 echo "Then run this program again."
+        elif which apt-get >/dev/null 2>/dev/null ; then
+            >&2 echo "Run:  sudo apt-get install ${packagename}"
+            >&2 echo ""
+            >&2 echo "Then run this program again."
+        else
+            >&2 echo "Install it, then run this program again."
+        fi
+        >&2 echo "Exiting."
+        exit 1
+    else true ; fi
 }
 
 ###############################################################################
