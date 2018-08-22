@@ -89,6 +89,8 @@ steps:
 EOF
 
 initialize () {
+    >&2 echo "Initializing..."
+    
     if [[ -z "${authors_file}" ]] ; then
         authors_file="${projectname}-authors.txt"
     fi
@@ -125,6 +127,8 @@ initialize () {
 }
 
 edit-authors-file () {
+    >&2 echo "Editing authors file..."
+    
     if (( no_edit_authors )) ; then
         if [[ ! -e "${authors_file}" ]] ; then
             >&2 echo "${authors_file} does not exist."
@@ -175,6 +179,8 @@ edit-authors-file () {
 }
 
 clone-repository () {
+    >&2 echo "Cloning repository..."
+    
     if [[ ! -e "${authors_file}" ]] ; then
         >&2 echo "${authors_file} does not exist."
         >&2 echo "Exiting."
@@ -198,6 +204,8 @@ clone-repository () {
 }
 
 convert-ignores () {
+    >&2 echo "Converting Subversion ignores..."
+    
     (
         cd "${projectname}.tmp"
         >&2 echo "Converting svn:ignore properties ..."
@@ -216,11 +224,13 @@ convert-ignores () {
             return
         else true ; fi
         
-                rm .gitignore || true
+        rm .gitignore || true
     )
 }
 
 fix-tags () {
+    >&2 echo "Fixing Subversion tags..."
+    
     (
         local b
         cd "${projectname}.tmp"
@@ -236,6 +246,8 @@ fix-tags () {
 }
 
 fix-branches () {
+    >&2 echo "Fixing Subversion branches..."
+    
     (
         local t
         cd "${projectname}.tmp"
@@ -251,6 +263,8 @@ fix-branches () {
 }
 
 remove-pegs () {
+    >&2 echo "Removing Subversion peg revisions..."
+    
     (
         local p
         cd "${projectname}.tmp"
@@ -265,6 +279,8 @@ remove-pegs () {
 }
 
 final-setup () {
+    >&2 echo "Performing final steps..."
+    
     mkdir -p "${projectname}.tmp.git"
     local realpath="$(realpath "${projectname}.tmp.git")"
     (
