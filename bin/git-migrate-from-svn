@@ -89,7 +89,7 @@ steps:
 EOF
 
 initialize () {
-    >&2 echo "Initializing..."
+    >&2 echo "${progname}: Initializing..."
     
     if [[ -z "${authors_file}" ]] ; then
         authors_file="${projectname}-authors.txt"
@@ -127,7 +127,7 @@ initialize () {
 }
 
 edit-authors-file () {
-    >&2 echo "Editing authors file..."
+    >&2 echo "${progname}: Editing authors file..."
     
     if (( no_edit_authors )) ; then
         if [[ ! -e "${authors_file}" ]] ; then
@@ -179,7 +179,7 @@ edit-authors-file () {
 }
 
 clone-repository () {
-    >&2 echo "Cloning repository..."
+    >&2 echo "${progname}: Cloning repository..."
     
     if [[ ! -e "${authors_file}" ]] ; then
         >&2 echo "${authors_file} does not exist."
@@ -204,16 +204,15 @@ clone-repository () {
 }
 
 convert-ignores () {
-    >&2 echo "Converting Subversion ignores..."
+    >&2 echo "${progname}: Converting Subversion ignores..."
     
     (
         cd "${projectname}.tmp"
-        >&2 echo "Converting svn:ignore properties ..."
 
-            git svn show-ignore > .gitignore || true
-            if grep . .gitignore >/dev/null 2>/dev/null ; then
-                git add .gitignore
-                git commit -m 'Convert svn:ignore properties to .gitignore.'
+        git svn show-ignore > .gitignore || true
+        if grep . .gitignore >/dev/null 2>/dev/null ; then
+            git add .gitignore
+            git commit -m 'Convert svn:ignore properties to .gitignore.'
             return
         else true ; fi
 
@@ -229,12 +228,11 @@ convert-ignores () {
 }
 
 fix-tags () {
-    >&2 echo "Fixing Subversion tags..."
+    >&2 echo "${progname}: Fixing Subversion tags..."
     
     (
         local b
         cd "${projectname}.tmp"
-        >&2 echo "Fixing branches ..."
         for b in $(
                       git for-each-ref --format='%(refname:short)' refs/remotes
                   ); do
@@ -246,12 +244,11 @@ fix-tags () {
 }
 
 fix-branches () {
-    >&2 echo "Fixing Subversion branches..."
+    >&2 echo "${progname}: Fixing Subversion branches..."
     
     (
         local t
         cd "${projectname}.tmp"
-        >&2 echo "Fixing tags ..."
         for t in $(
                       git for-each-ref --format='%(refname:short)' refs/remotes/tags
                   ); do
@@ -263,12 +260,11 @@ fix-branches () {
 }
 
 remove-pegs () {
-    >&2 echo "Removing Subversion peg revisions..."
+    >&2 echo "${progname}: Removing Subversion peg revisions..."
     
     (
         local p
         cd "${projectname}.tmp"
-        >&2 echo "Removing peg revisions ..."
         for p in $(
                       git for-each-ref --format='%(refname:short)' | grep @
                   ); do
@@ -279,7 +275,7 @@ remove-pegs () {
 }
 
 final-setup () {
-    >&2 echo "Performing final steps..."
+    >&2 echo "${progname}: Performing final steps..."
     
     mkdir -p "${projectname}.tmp.git"
     local realpath="$(realpath "${projectname}.tmp.git")"
@@ -381,11 +377,11 @@ check_options () {
                 usage; exit 0;;
             n|dry-run)
                 # dry_run=1;;
-                >&2 echo "-n/--dry-run does nothing.  Exiting."
+                >&2 echo "${progname}: -n/--dry-run does nothing.  Exiting."
                 exit 1;;
             v|verbose)
                 # verbose=$((verbose + 1));;
-                >&2 echo "-v/--verbose does nothing.  Exiting."
+                >&2 echo "${progname}: -v/--verbose does nothing.  Exiting."
                 exit 1;;
             "?")
                 exit 1;;
@@ -400,7 +396,7 @@ check_options () {
 require_package () {
     local package_name="$1"; shift
     if ! "$@" >/dev/null 2>/dev/null ; then
-        >&2 echo "\`${package_name}\` utility not found."
+        >&2 echo "${progname}: ${package_name} utility not found."
         >&2 echo ""
         if which apt >/dev/null 2>/dev/null ; then
             >&2 echo "Run:  sudo apt install ${package_name}"
