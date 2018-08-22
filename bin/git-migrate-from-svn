@@ -96,7 +96,7 @@ initialize () {
     fi
 
     clone_cmd=(
-        git "${git_config_args[@]}" svn clone
+        git svn clone
         "${svnurl}"
         --authors-file="${authors_file}"
         --no-metadata
@@ -345,9 +345,12 @@ longoptions=(
 )
 
 set_git_config () {
-    git_config_args+=(
-        -c "${OPTARG}"
-    )
+    local i
+    for i ; do
+        git_config_args+=(
+            -c "${i}"
+        )
+    done
 }
 
 check_options () {
@@ -412,6 +415,10 @@ require_package () {
         >&2 echo "Exiting."
         exit 1
     else true ; fi
+}
+
+git () {
+    command git "${git_config_args[@]}" "$@"
 }
 
 ###############################################################################
