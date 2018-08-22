@@ -25,9 +25,9 @@ dirname="$(dirname "$0")"
 . "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
-    #               program  package
-    require_package git-svn  git-svn
-    require_package realpath realpath
+    #               package  test-command
+    require_package git-svn  git svn help
+    require_package realpath which realpath
 
     if (( $# < 2 )) ; then
         >&2 echo "${progname}: not enough arguments."
@@ -94,7 +94,7 @@ initialize () {
     fi
 
     clone_cmd=(
-        git svn clone
+        git "${git_config_args[@]}" svn clone
         "${svnurl}"
         --authors-file="${authors_file}"
         --no-metadata
@@ -193,7 +193,7 @@ clone-repository () {
 
     rm -frv "${projectname}.tmp"     || true
     rm -frv "${projectname}.tmp.git" || true
-    
+
     "${clone_cmd[@]}"
 }
 
@@ -202,10 +202,10 @@ convert-ignores () {
         cd "${projectname}.tmp"
         >&2 echo "Converting svn:ignore properties ..."
 
-        git svn show-ignore > .gitignore || true
-        if grep . .gitignore >/dev/null 2>/dev/null ; then
-            git add .gitignore
-            git commit -m 'Convert svn:ignore properties to .gitignore.'
+            git svn show-ignore > .gitignore || true
+            if grep . .gitignore >/dev/null 2>/dev/null ; then
+                git add .gitignore
+                git commit -m 'Convert svn:ignore properties to .gitignore.'
             return
         else true ; fi
 
@@ -216,7 +216,7 @@ convert-ignores () {
             return
         else true ; fi
         
-        rm .gitignore || true
+                rm .gitignore || true
     )
 }
 
@@ -382,17 +382,16 @@ check_options () {
 }
 
 require_package () {
-    local program="$1"; shift
     local package_name="$1"; shift
-    if ! which "${program}" >/dev/null 2>/dev/null ; then
-        >&2 echo "\`${program}\` utility not found."
+    if ! "$@" >/dev/null 2>/dev/null ; then
+        >&2 echo "\`${package_name}\` utility not found."
         >&2 echo ""
         if which apt >/dev/null 2>/dev/null ; then
-            >&2 echo "Run:  sudo apt install ${packagename}"
+            >&2 echo "Run:  sudo apt install ${package_name}"
             >&2 echo ""
             >&2 echo "Then run this program again."
         elif which apt-get >/dev/null 2>/dev/null ; then
-            >&2 echo "Run:  sudo apt-get install ${packagename}"
+            >&2 echo "Run:  sudo apt-get install ${package_name}"
             >&2 echo ""
             >&2 echo "Then run this program again."
         else
