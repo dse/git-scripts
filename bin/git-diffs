@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+temp="$(mktemp)"
+
+declare -a versions
+
+mapfile -t versions < <(git tag -l | grep -e '^v[0-9]' -e '^[0-9]' | grep -v -e '[-0-9]rc[0-9][0-9]*$' | sort -V)
+
+mkdir -p CHANGES/diff-b
+mkdir -p CHANGES/name-status
+mkdir -p CHANGES/log
+
+declare -a git_diff_excludes
+git_diff_excludes=(
+    ":(exclude,icase)composer.lock"
+    ":(exclude,icase)*.min.css"
+    ":(exclude,icase)*.css.map"
+    ":(exclude,icase)*.min.js"
+    ":(exclude,icase)*.js.map"
+    ":(exclude,icase)*.jpg"
+    ":(exclude,icase)*.jpeg"
+    ":(exclude,icase)*.png"
+    ":(exclude,icase)*.gif"
+)
+
+if (( ${#versions[@]} >= 2 )) ; then
+    lastindex=$(( "${#versions[@]}" - 1 ))
+    index=0
+    while [[ $index -lt $lastindex ]] ; do
+        nextindex=$((index + 1))
+        versionA="${versions[$index]}"
+        versionB="${versions[$nextindex]}"
+        echo $versionA $versionB
+        index=$((index + 1))
+        ab="${versionA}..${versionB}"
+        git -c core.whitespace=cr-at-eol diff --color=never --diff-filter=M --ignore-blank-lines --ignore-space-change "${ab}" \
+            "${git_diff_excludes[@]}" \
+            | perl -p -e 's{\R\z}{\n}g' \
+            >CHANGES/diff-b/"${ab}.diff"
+        git diff --name-status "${ab}" >CHANGES/name-status/"${ab}.name-status.txt"
+        git log --name-status  "${ab}" >CHANGES/log/"${ab}.log.txt"
+    done
+fi
