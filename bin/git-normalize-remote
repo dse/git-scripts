@@ -30,7 +30,7 @@ options:
   -h, --help
   -v, --verbose
 defaults:
-  If no <remote> arguments are specified, uses 'origin' and 'upstream'.
+  If no <remote> arguments are specified, checks for 'origin' and 'upstream'.
 EOF
 ###############################################################################
 
