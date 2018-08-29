@@ -99,9 +99,13 @@ sub set_remote_url {
     return 1;
 }
 
+# git@github.com:mojombo/grit.git
+# git://github.com/koke/grit.git
+# https://github.com/defunkt/grit
+
 sub normalize_url {
     my ($url) = @_;
-    if ($url =~ m{^https?://(?:www\.)?github\.com/([^/\\]+)/([^/\\]+)\.git$}i) {
+    if ($url =~ m{^(?:https?|git)://(?:www\.)?github\.com/([^/\\]+)/([^/\\]+)(?:\.git)?$}ix) {
         my ($owner, $repos) = ($1, $2);
         return sprintf("git\@github.com:%s/%s.git", $owner, $repos);
     }
