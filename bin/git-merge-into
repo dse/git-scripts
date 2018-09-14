@@ -31,12 +31,12 @@ EOF
 
     git push || croak $? "${source}" <<EOF
         |
-        |*** merge successful, but \`git push\` into ${dest} failed.
+        |*** checkout and merge successful, but \`git push\` from ${dest} failed.
 EOF
 
     git checkout "${source}" || croak $? "${source}" <<EOF
         |
-        |*** merge and push successful, but \`git checkout ${source}\` failed.
+        |*** checkout, merge, and push successful, but \`git checkout ${source}\` failed.
 EOF
 
     sendoff <<EOF
