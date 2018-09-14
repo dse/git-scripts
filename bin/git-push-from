@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
+. "${dirname}/../share/bash-getlongopts/getlongopts.sh"
+. "${dirname}/../share/git-scripts/git-scripts.sh"
+
+main () {
+    if (( $# < 1 )) ; then
+        >&2 echo "usage: git push-from <branch>"
+        exit 1
+    fi
+
+    local dest source
+
+    dest="$1"
+    source="$(git rev-parse --abbrev-ref HEAD)"
+
+    git checkout "${dest}" || croak $? "${source}" <<EOF
+        |
+        |*** \`git checkout ${dest}\` failed.
+EOF
+
+    git push || croak $? "${source}" <<EOF
+        |
+        |*** checkout successful, but \`git push\` from ${dest} failed.
+EOF
+
+    git checkout "${source}" || croak $? "${source}" <<EOF
+        |
+        |*** checkout and push successful, but \`git checkout ${source}\` failed.
+EOF
+
+    sendoff <<EOF
+        |
+        |*** ALL DONE.  :-)
+EOF
+}
+
+###############################################################################
+
+main "$@"
