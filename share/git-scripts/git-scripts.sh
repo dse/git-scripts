@@ -37,3 +37,8 @@ sendoff () {
     sed 's/^[ '$'\t'']*|//' >&2
     exit 0
 }
+
+set_heredoc () {
+    local varname="$1"
+    IFS='' read -r -d '' "${varname}" || true
+}
