@@ -63,6 +63,7 @@ options:
                          can specify escapes, e.g., --separator='\\t'
   --verbose
   --dry-run
+  --errors-only          only show output/stderr when commands fail
 debugging:
   --no-pty               don't use pseudoterminals
 END
@@ -391,6 +392,8 @@ package My::Git::Porcelain::All {
 
             STDOUT->autoflush(1);
             if (-t 1) {
+                # show each project while git <cmd> is doing its work
+                # on it.
                 printf($format, $dir_header);
             }
 
@@ -445,8 +448,10 @@ package My::Git::Porcelain::All {
                 my $status = $?;
                 if (-t 1) {
                     if ($status) {
+                        # keep project name visible on terminal
                         print "\n";
                     } else {
+                        # erase project name, no newline
                         print "\r${clear_to_eol}";
                     }
                 } else {
@@ -554,7 +559,6 @@ package My::Git::Porcelain::All::Util {
         push(@EXPORT_OK, 'spork');
     }
 
-    sub spork(&);
     sub spork(&) {
         my ($sub) = @_;
         my $pid = fork;
