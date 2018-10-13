@@ -24,6 +24,7 @@ our $format;
 our $separator;
 our $verbose;
 our $dry_run;
+our $errors_only;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
@@ -39,6 +40,7 @@ Getopt::Long::GetOptions(
     "separator=s"          => \$separator,
     "v|verbose+"           => \$verbose,
     "n|dry-run"            => \$dry_run,
+    "errors-only"          => \$errors_only,
     "h|help" => sub {
         usage(); exit(0);
     }
@@ -79,6 +81,7 @@ $recurse->{format}      = $format      if defined $format;
 $recurse->{separator}   = $separator   if defined $separator;
 $recurse->{verbose}     = $verbose     if defined $verbose;
 $recurse->{dry_run}     = $dry_run     if defined $dry_run;
+$recurse->{errors_only} = $errors_only if defined $errors_only;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -89,6 +92,12 @@ package My::Git::Porcelain::All {
         my ($class) = @_;
         my $self = bless({}, $class);
         return $self;
+    }
+
+    # use My::Git::Porcelain::All::Util qw(spork);
+    sub spork(&);
+    INIT {
+        import My::Git::Porcelain::All::Util qw(spork);
     }
 
     sub run {
@@ -171,11 +180,7 @@ package My::Git::Porcelain::All {
     sub is_in_git_repos {
         my ($self, %args) = @_;
         my $dir = $args{directory};
-
-        my $pid = fork();
-        if (!defined $pid) {    # cannot fork
-            die("fork: $!");
-        } elsif (!$pid) {       # child
+        my $pid = spork {
             close(\*STDOUT);
             close(\*STDERR);
             if (defined $dir && $dir ne ".") {
@@ -186,16 +191,15 @@ package My::Git::Porcelain::All {
             if (!exec("git", "rev-parse", "--git-dir")) {
                 die("exec git: $!");
             }
-        } else {                # parent
-            if (wait() == -1) {
-                warn("unexpected: no child process\n");
+        };
+        if (waitpid($pid, 0) == -1) {
+            warn("unexpected: no child process\n");
+            return 0;           # failure
+        } else {
+            if ($?) {
                 return 0;       # failure
             } else {
-                if ($?) {
-                    return 0;   # failure
-                } else {
-                    return 1;   # success
-                }
+                return 1;       # success
             }
         }
     }
@@ -255,6 +259,34 @@ package My::Git::Porcelain::All {
         find({ wanted => $wanted }, $dir);
     }
 
+    sub stdout {
+        my ($self, $line) = @_;
+        local $_ = $line;
+        s{\R\z}{};
+        if ($self->{inline}) {
+            print STDOUT $self->{inline_prefix};
+            print STDOUT $self->{inline_separator} if defined $self->{inline_separator};
+        } elsif ($self->{indent}) {
+            print STDOUT "    ";
+        }
+        print STDOUT "$_\n";
+        STDOUT->flush();
+    }
+
+    sub stderr {
+        my ($self, $line) = @_;
+        local $_ = $line;
+        s{\R\z}{};
+        if ($self->{inline}) {
+            print STDERR $self->{inline_prefix};
+            print STDERR $self->{inline_separator} if defined $self->{inline_separator};
+        } elsif ($self->{indent}) {
+            print STDERR "    ";
+        }
+        print STDERR "$_\n";
+        STDERR->flush();
+    }
+
     sub run_git_command_in {
         my ($self, %args) = @_;
         my $depth = $args{depth} // 1;
@@ -275,13 +307,13 @@ package My::Git::Porcelain::All {
                 $format .= $self->{no_brackets} ? ":" : " ";
             }
         }
-        my $print = $self->{basename} ? basename($dir) : $dir;
-        if (!$self->{inline}) {
-            printf($format . "\n", $print);
+        my $dir_header = $self->{basename} ? basename($dir) : $dir;
+        if (!$self->{inline} && !$self->{errors_only}) {
+            printf($format . "\n", $dir_header);
         }
-        my $inline_prefix = $self->{inline} && sprintf($format, $print);
-        my $inline_separator = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
-        my $use_pipes_and_such = $self->{indent} || $self->{inline};
+        my $inline_prefix = $self->{inline_prefix} = $self->{inline} && sprintf($format, $dir_header);
+        my $inline_separator = $self->{inline_separator} = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
+        my $use_pipes_and_such = $self->{indent} || $self->{inline} || $self->{errors_only};
 
         # git <command> <args> writes to $*_write
         # our first child process reads from $stdout_read
@@ -313,11 +345,9 @@ package My::Git::Porcelain::All {
             return;
         }
 
-        my $pid = fork();
-        if (!defined $pid) {    # cannot fork
-            die("fork: $!");
-            # this point is never reached.
-        } elsif (!$pid) {       # child
+        my %proc;
+
+        my $pid = spork {
             if (defined $reldir && $reldir ne ".") {
                 if (!chdir($reldir)) {
                     die("chdir $reldir: $!");
@@ -330,98 +360,151 @@ package My::Git::Porcelain::All {
             if (!exec(@cmd)) {
                 die("exec $cmd[0]: $!");
             }
-        } else {                # parent
-            my ($pid1, $pid2);
+        };
+        if ($cmd[0] eq "git") {
+            $proc{$pid} = "git $cmd[1]";
+        } else {
+            $proc{$pid} = $cmd[0];
+        }
 
-            my $do_a_wait = sub {
-                my $wait = wait();
-                my $status = $?;
-                if ($wait == -1) {
-                    warn("unexpected: no child process\n");
-                    return 0;
-                } elsif (defined $wait) {
-                    if (defined $pid1 && $wait == $pid1) {
-                        if ($status) {
-                            $self->warn_child_error($status, "stdout pipe");
-                            return 0;
-                        }
-                    } elsif (defined $pid2 && $wait == $pid2) {
-                        if ($status) {
-                            $self->warn_child_error($status, "stderr pipe");
-                            return 0;
-                        }
-                    } elsif (defined $pid && $wait == $pid) {
-                        if ($status) {
-                            $self->warn_child_error($status, "$cmd[0]");
-                            return 0;
-                        }
-                    } else {
-                        warn("unexpected return value from wait()\n");
-                        return 0;
-                    }
-                } else {
-                    warn("unexpected: wait() returned undefined\n");
-                    return 0;
+        my ($pid1, $pid2);
+
+        my $wait_report = sub {
+            my ($pid, $status) = @_;
+            $status //= $?;
+            if ($pid == -1) {
+                warn("unexpected: no child process\n");
+            } elsif (!defined $pid) {
+                warn("unexpected: wait returned undefined\n");
+            } else {
+                my $proc = $proc{$pid};
+                if ($status) {
+                    $self->warn_child_error($status, $proc);
                 }
-                return 1;
-            };
+            }
+            $? = $status;
+        };
 
-            if ($use_pipes_and_such) {
-                close($stdout_write) or die("close: $!");
-                close($stderr_write) or die("close: $!");
+        if ($self->{errors_only}) {
+            close($stdout_write) or die("close: $!");
+            close($stderr_write) or die("close: $!");
 
-                $pid1 = fork();
-                if (!defined $pid1) {
-                    die("fork: $!");
-                } elsif (!$pid1) { # child
-                    close($stderr_read) or die("close: $!");
-                    select STDOUT; $| = 1;
-                    local $_;
-                    while (<$stdout_read>) {
-                        s{\R\z}{};
-                        if ($self->{inline}) {
-                            print STDOUT $inline_prefix;
-                            print STDOUT $inline_separator if defined $inline_separator;
-                        } elsif ($self->{indent}) {
-                            print STDOUT "    ";
-                        }
-                        print STDOUT "$_\n";
-                        STDOUT->flush();
-                    }
-                    close($stdout_read) or die("close: $!");
-                    exit;
-                }
-
-                $pid2 = fork();
-                if (!defined $pid2) {
-                    die("fork: $!");
-                } elsif (!$pid2) { # child
-                    close($stdout_read) or die("close: $!");
-                    select STDERR; $| = 1;
-                    local $_;
-                    while (<$stderr_read>) {
-                        s{\R\z}{};
-                        if ($self->{inline}) {
-                            print STDERR $inline_prefix;
-                            print STDERR $inline_separator if defined $inline_separator;
-                        } elsif ($self->{indent}) {
-                            print STDERR "    ";
-                        }
-                        print STDERR "$_\n";
-                        STDERR->flush();
-                    }
-                    close($stderr_read) or die("close: $!");
-                    exit;
-                }
-
-                close($stdout_read) or die("close: $!");
-                close($stderr_read) or die("close: $!");
-
-                $do_a_wait->();
-                $do_a_wait->();
+            STDOUT->autoflush(1);
+            if (-t 1) {
+                printf($format, $dir_header);
             }
 
-            $do_a_wait->();
+            my $clear_to_eol = (-t 1) && `tput ce`;
+
+            my $rin = '';
+            vec($rin, fileno($stdout_read), 1) = 1;
+            vec($rin, fileno($stderr_read), 1) = 1;
+
+            my @lines;
+
+            while (1) {
+                my $rout = $rin;
+                my $nfound = select(
+                    $rout,
+                    undef,
+                    undef,
+                    undef
+                );
+                if ($nfound == -1) {
+                    warn("select: $!\n");
+                    last;
+                }
+                if (!$nfound) {
+                    last;
+                }
+                if (vec($rout, fileno($stdout_read), 1)) {
+                    my $line = <$stdout_read>;
+                    if (defined $line) {
+                        push(@lines, { fh => "stdout", line => $line });
+                    } else {
+                        if ($!) {
+                            warn("read: $!\n");
+                        }
+                        last;
+                    }
+                }
+                if (vec($rout, fileno($stderr_read), 1)) {
+                    my $line = <$stderr_read>;
+                    if (defined $line) {
+                        push(@lines, { fh => "stderr", line => $line });
+                    } else {
+                        if ($!) {
+                            warn("read: $!\n");
+                        }
+                        last;
+                    }
+                }
+            }
+            {
+                my $pid = wait();
+                my $status = $?;
+                if (-t 1) {
+                    if ($status) {
+                        print "\n";
+                    } else {
+                        print "\r${clear_to_eol}";
+                    }
+                } else {
+                    if ($status) {
+                        printf($format . "\n", $dir_header);
+                    }
+                }
+                if (!$status) {
+                    $wait_report->($pid, $status);
+                }
+                if ($status) {
+                    foreach my $line (@lines) {
+                        $self->stdout($line->{line}) if $line->{fh} eq "stdout";
+                        $self->stderr($line->{line}) if $line->{fh} eq "stderr";
+                    }
+                }
+            }
+        } elsif ($use_pipes_and_such) {
+            close($stdout_write) or die("close: $!");
+            close($stderr_write) or die("close: $!");
+
+            my $pid1 = spork {
+                close($stderr_read) or die("close: $!");
+                select STDOUT; $| = 1;
+                local $_;
+                while (<$stdout_read>) {
+                    $self->stdout($_);
+                }
+                close($stdout_read) or die("close: $!");
+            };
+            $proc{$pid1} = "stdout pipe";
+
+            my $pid2 = spork {
+                close($stdout_read) or die("close: $!");
+                select STDERR; $| = 1;
+                local $_;
+                while (<$stderr_read>) {
+                    $self->stderr($_);
+                }
+                close($stderr_read) or die("close: $!");
+            };
+            $proc{$pid2} = "stderr pipe";
+
+            close($stdout_read) or die("close: $!");
+            close($stderr_read) or die("close: $!");
+
+            {
+                my $pid = wait();
+                $wait_report->($pid);
+            }
+            {
+                my $pid = wait();
+                $wait_report->($pid);
+            }
+            {
+                my $pid = wait();
+                $wait_report->($pid);
+            }
         }
     }
 
@@ -462,3 +545,26 @@ package My::Git::Porcelain::All {
     }
 
 };                              # end package My::Git::Porcelain::All
+
+package My::Git::Porcelain::All::Util {
+    use base "Exporter";
+
+    our @EXPORT_OK;
+    BEGIN {
+        push(@EXPORT_OK, 'spork');
+    }
+
+    sub spork(&);
+    sub spork(&) {
+        my ($sub) = @_;
+        my $pid = fork;
+        if (!defined $pid) {
+            die("fork: $!\n");
+        }
+        if (!$pid) {
+            $sub->();
+            exit;
+        }
+        return $pid;
+    }
+};
