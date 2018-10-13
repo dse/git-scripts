@@ -21,6 +21,7 @@ our $no_brackets;
 our $indent;
 our $no_pty;
 our $format;
+our $format_width;
 our $separator;
 our $verbose;
 our $dry_run;
@@ -37,6 +38,7 @@ Getopt::Long::GetOptions(
     "indent"               => \$indent,
     "no-pty"               => \$no_pty,
     "format=s"             => \$format,
+    "format-width=i"       => \$format_width,
     "separator=s"          => \$separator,
     "v|verbose+"           => \$verbose,
     "n|dry-run"            => \$dry_run,
@@ -59,6 +61,7 @@ options:
   --no-brackets          no brackets around directory names
   --indent               indent command stdout/stderr
   --format=FORMAT        e.g., --format='project %s:'
+  --format-width=COLS    try to align output/errors
   --separator=SEPARATOR  between directory name and command stdout/stderr
                          can specify escapes, e.g., --separator='\\t'
   --verbose
@@ -71,18 +74,19 @@ END
 
 $ENV{GIT_PAGER} = "cat";
 my $recurse = My::Git::Porcelain::All->new();
-$recurse->{maxdepth}    = $maxdepth    if defined $maxdepth;
-$recurse->{no_git}      = $no_git      if defined $no_git;
-$recurse->{basename}    = $basename    if defined $basename;
-$recurse->{inline}      = $inline      if defined $inline;
-$recurse->{no_brackets} = $no_brackets if defined $no_brackets;
-$recurse->{indent}      = $indent      if defined $indent;
-$recurse->{no_pty}      = $no_pty      if defined $no_pty;
-$recurse->{format}      = $format      if defined $format;
-$recurse->{separator}   = $separator   if defined $separator;
-$recurse->{verbose}     = $verbose     if defined $verbose;
-$recurse->{dry_run}     = $dry_run     if defined $dry_run;
-$recurse->{errors_only} = $errors_only if defined $errors_only;
+$recurse->{maxdepth}     = $maxdepth     if defined $maxdepth;
+$recurse->{no_git}       = $no_git       if defined $no_git;
+$recurse->{basename}     = $basename     if defined $basename;
+$recurse->{inline}       = $inline       if defined $inline;
+$recurse->{no_brackets}  = $no_brackets  if defined $no_brackets;
+$recurse->{indent}       = $indent       if defined $indent;
+$recurse->{no_pty}       = $no_pty       if defined $no_pty;
+$recurse->{format}       = $format       if defined $format;
+$recurse->{format_width} = $format_width if defined $format_width;
+$recurse->{separator}    = $separator    if defined $separator;
+$recurse->{verbose}      = $verbose      if defined $verbose;
+$recurse->{dry_run}      = $dry_run      if defined $dry_run;
+$recurse->{errors_only}  = $errors_only  if defined $errors_only;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -312,9 +316,15 @@ package My::Git::Porcelain::All {
         if (!$self->{inline} && !$self->{errors_only}) {
             printf($format . "\n", $dir_header);
         }
-        my $inline_prefix = $self->{inline_prefix} = $self->{inline} && sprintf($format, $dir_header);
-        my $inline_separator = $self->{inline_separator} = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
+        my $inline_prefix = $self->{inline} && sprintf($format, $dir_header);
+        if (defined $self->{format_width}) {
+            $inline_prefix = sprintf("%-*s", $self->{format_width}, $inline_prefix);
+        }
+        my $inline_separator = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
         my $use_pipes_and_such = $self->{indent} || $self->{inline} || $self->{errors_only};
+
+        $self->{inline_separator} = $inline_separator;
+        $self->{inline_prefix} = $inline_prefix;
 
         # git <command> <args> writes to $*_write
         # our first child process reads from $stdout_read
@@ -379,7 +389,7 @@ package My::Git::Porcelain::All {
                 warn("unexpected: wait returned undefined\n");
             } else {
                 my $proc = $proc{$pid};
-                if ($status) {
+                if ($status && $self->{verbose}) {
                     $self->warn_child_error($status, $proc);
                 }
             }
