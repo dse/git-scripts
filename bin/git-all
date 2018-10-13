@@ -99,9 +99,7 @@ package My::Git::Porcelain::All {
         @arguments = @$arguments;
 
         if (!defined $command) {
-            warn("usage: git all GITCOMMAND [ARGUMENTS] [--- DIRECTORIES]\n");
-            warn("       git all list-git-directories [--- DIRECTORIES]\n");
-            exit(1);
+            die("No command specified.  Type '$0 --help' for help.\n");
         }
         if ($command eq "test-git-all-porcelain") {
             printf("\$command:     %s\n", $command);
@@ -285,6 +283,9 @@ package My::Git::Porcelain::All {
         my $inline_separator = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
         my $use_pipes_and_such = $self->{indent} || $self->{inline};
 
+        # git <command> <args> writes to $*_write
+        # our first child process reads from $stdout_read
+        # our second child process reads from $stderr_read
         my ($stdout_read, $stdout_write);
         my ($stderr_read, $stderr_write);
         if ($use_pipes_and_such) {
@@ -337,25 +338,32 @@ package My::Git::Porcelain::All {
                 my $status = $?;
                 if ($wait == -1) {
                     warn("unexpected: no child process\n");
+                    return 0;
                 } elsif (defined $wait) {
                     if (defined $pid1 && $wait == $pid1) {
                         if ($status) {
                             $self->warn_child_error($status, "stdout pipe");
+                            return 0;
                         }
                     } elsif (defined $pid2 && $wait == $pid2) {
                         if ($status) {
                             $self->warn_child_error($status, "stderr pipe");
+                            return 0;
                         }
                     } elsif (defined $pid && $wait == $pid) {
                         if ($status) {
                             $self->warn_child_error($status, "$cmd[0]");
+                            return 0;
                         }
                     } else {
                         warn("unexpected return value from wait()\n");
+                        return 0;
                     }
                 } else {
                     warn("unexpected: wait() returned undefined\n");
+                    return 0;
                 }
+                return 1;
             };
 
             if ($use_pipes_and_such) {
