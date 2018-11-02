@@ -2,6 +2,13 @@
 set -o errexit
 set -o pipefail
 
+no_index=0
+for i ; do
+    if [[ "$i" = "--no-index" ]] ; then
+        no_index=1
+    fi
+done
+
 declare -a difff_global_options
 declare -a difff_options
 declare -a difff_arguments
@@ -35,9 +42,15 @@ if git diff --ignore-cr-at-eol --no-index /dev/null /dev/null >/dev/null 2>/dev/
     difff_options+=(--ignore-cr-at-eol)
 fi
 
+# Special `git logg` mode (see `git-logg` program).
 if (( $# )) && [[ "$1" = "{logg}" ]] ; then
     shift
     exec git "${difff_global_options[@]}" log --patch "${difff_options[@]}" "$@" "${difff_arguments[@]}"
-else
-    exec git "${difff_global_options[@]}" diff "${difff_options[@]}" "$@" "${difff_arguments[@]}"
 fi
+
+if (( no_index )) ; then
+    # git diff --no-index does not take ":(exclude,...)..." arguments.
+    exec git "${difff_global_options[@]}" diff "${difff_options[@]}" "$@"
+fi
+
+exec git "${difff_global_options[@]}" diff "${difff_options[@]}" "$@" "${difff_arguments[@]}"
