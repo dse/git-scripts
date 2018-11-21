@@ -24,6 +24,11 @@ main () {
         |*** \`git checkout ${dest}\` failed.
 EOF
 
+    git pull || croak $? "${source}" <<EOF
+        |
+        |*** \`git pull\` into ${dest} failed.
+EOF
+
     git merge "${source}" || croak $? "${source}" <<EOF
         |
         |*** \`git merge ${source}\` into ${dest} failed.
