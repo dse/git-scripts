@@ -29,9 +29,9 @@ EOF
         |*** \`git pull\` into ${dest} failed.
 EOF
 
-    git merge "${source}" || croak $? "${source}" <<EOF
+    git merge --no-edit "${source}" || croak $? "${source}" <<EOF
         |
-        |*** \`git merge ${source}\` into ${dest} failed.
+        |*** \`git merge --no-edit ${source}\` into ${dest} failed.
 EOF
 
     git push || croak $? "${source}" <<EOF
