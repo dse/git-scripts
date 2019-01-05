@@ -26,6 +26,7 @@ our $separator;
 our $verbose;
 our $dry_run;
 our $errors_only;
+our $no_progress;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
@@ -43,6 +44,7 @@ Getopt::Long::GetOptions(
     "v|verbose+"           => \$verbose,
     "n|dry-run"            => \$dry_run,
     "errors-only"          => \$errors_only,
+    "no-progress"          => \$no_progress,
     "h|help" => sub {
         usage(); exit(0);
     }
@@ -67,6 +69,7 @@ options:
   --verbose
   --dry-run
   --errors-only          only show output/stderr when commands fail
+  --no-progress          don't show progress.  No effect unless --errors-only.
 debugging:
   --no-pty               don't use pseudoterminals
 END
@@ -87,6 +90,7 @@ $recurse->{separator}    = $separator    if defined $separator;
 $recurse->{verbose}      = $verbose      if defined $verbose;
 $recurse->{dry_run}      = $dry_run      if defined $dry_run;
 $recurse->{errors_only}  = $errors_only  if defined $errors_only;
+$recurse->{no_progress}  = $no_progress  if defined $no_progress;
 $recurse->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -415,9 +419,11 @@ package My::Git::Porcelain::All {
 
             STDOUT->autoflush(1);
             if (-t 1) {
-                # show each project while git <cmd> is doing its work
-                # on it.
-                printf($format, $dir_header);
+                if (!$self->{no_progress}) {
+                    # show each project while git <cmd> is doing its work
+                    # on it.
+                    printf($format, $dir_header);
+                }
             }
 
             my $clear_to_eol = (-t 1) ? `tput ce` : "\n";
@@ -469,6 +475,9 @@ package My::Git::Porcelain::All {
             my $done = sub {
                 my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
                 if (-t 1) {
+                    if ($self->{no_progress}) {
+                        printf($format, $dir_header);
+                    }
                     if ($status) {
                         if (!$self->{inline}) {
                             # keep project name visible on terminal
