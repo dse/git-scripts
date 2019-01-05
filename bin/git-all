@@ -520,6 +520,9 @@ package My::Git::Porcelain::All {
                 my $pid = wait();
                 $wait_report->($pid);
             }
+        } else {
+            my $pid = wait();
+            $wait_report->($pid);
         }
     }
 
