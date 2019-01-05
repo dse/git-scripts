@@ -46,7 +46,7 @@ Getopt::Long::GetOptions(
     "h|help" => sub {
         usage(); exit(0);
     }
-) or die("Do not type '$0 --help' for help yet.\n");
+) or die("Type '$0 --help' for help.\n");
 
 ###############################################################################
 sub usage { print <<"END"; }
