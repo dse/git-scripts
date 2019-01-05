@@ -62,7 +62,7 @@ options:
   --indent               indent command stdout/stderr
   --format=FORMAT        e.g., --format='project %s:'
   --format-width=COLS    try to align output/errors
-  --separator=SEPARATOR  between directory name and command stdout/stderr
+  --separator=SEPARATOR  between project name and command stdout/stderr
                          can specify escapes, e.g., --separator='\\t'
   --verbose
   --dry-run
@@ -357,44 +357,57 @@ package My::Git::Porcelain::All {
         }
 
         my %proc;
+        my $spork = $self->{spork} //= My::Git::Porcelain::All::Spork->new(
+            die => 1,
+        );
 
-        my $pid = spork {
-            if (defined $reldir && $reldir ne ".") {
-                if (!chdir($reldir)) {
-                    die("chdir $reldir: $!");
+        my $wait = sub {
+            my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
+            if ($status) {
+                if ($self->{verbose}) {
+                    my $msg = "@$data";
+                    if ($exit) {
+                        $msg .= " exited with status $exit";
+                    }
+                    if ($signal) {
+                        $msg .= " killed by signal $signal";
+                    }
+                    if ($coredump) {
+                        $msg .= " dumped core";
+                    }
+                    warn("$msg\n");
                 }
             }
-            if ($use_pipes_and_such) {
-                open(STDOUT, ">&", $stdout_write) or die("open: $!");
-                open(STDERR, ">&", $stderr_write) or die("open: $!");
-            }
-            if (!exec(@cmd)) {
-                die("exec $cmd[0]: $!");
-            }
         };
-        if ($cmd[0] eq "git") {
-            $proc{$pid} = "git $cmd[1]";
-        } else {
-            $proc{$pid} = $cmd[0];
+
+        my $data = [@cmd];
+        if ($cmd[0] eq 'git') {
+            splice(@$data, 2);
         }
 
-        my ($pid1, $pid2);
-
-        my $wait_report = sub {
-            my ($pid, $status) = @_;
-            $status //= $?;
-            if ($pid == -1) {
-                warn("unexpected: no child process\n");
-            } elsif (!defined $pid) {
-                warn("unexpected: wait returned undefined\n");
-            } else {
-                my $proc = $proc{$pid};
-                if ($status && $self->{verbose}) {
-                    $self->warn_child_error($status, $proc);
+        my $pid = $spork->fork(
+            start => sub {
+                if (defined $reldir && $reldir ne ".") {
+                    if (!chdir($reldir)) {
+                        die("chdir $reldir: $!");
+                    }
                 }
-            }
-            $? = $status;
-        };
+                if ($use_pipes_and_such) {
+                    open(STDOUT, ">&", $stdout_write) or die("open: $!");
+                    open(STDERR, ">&", $stderr_write) or die("open: $!");
+                }
+                if (!exec(@cmd)) {
+                    die("exec $cmd[0]: $!");
+                }
+            },
+            done => sub {
+                my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
+                $wait->($pid, $status, $exit, $signal, $coredump, $data);
+            },
+            data => [@cmd],
+        );
+
+        my ($pid1, $pid2);
 
         if ($self->{errors_only}) {
             close($stdout_write) or die("close: $!");
@@ -407,7 +420,7 @@ package My::Git::Porcelain::All {
                 printf($format, $dir_header);
             }
 
-            my $clear_to_eol = (-t 1) && `tput ce`;
+            my $clear_to_eol = (-t 1) ? `tput ce` : "\n";
 
             my $rin = '';
             vec($rin, fileno($stdout_read), 1) = 1;
@@ -453,13 +466,17 @@ package My::Git::Porcelain::All {
                     }
                 }
             }
-            {
-                my $pid = wait();
-                my $status = $?;
+            my $done = sub {
+                my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
                 if (-t 1) {
                     if ($status) {
-                        # keep project name visible on terminal
-                        print "\n";
+                        if (!$self->{inline}) {
+                            # keep project name visible on terminal
+                            print "\n";
+                        } else {
+                            # erase project name, no newline
+                            print "\r${clear_to_eol}";
+                        }
                     } else {
                         # erase project name, no newline
                         print "\r${clear_to_eol}";
@@ -469,61 +486,75 @@ package My::Git::Porcelain::All {
                         printf($format . "\n", $dir_header);
                     }
                 }
-                if (!$status) {
-                    $wait_report->($pid, $status);
-                }
+                $wait->($pid, $status, $exit, $signal, $coredump, $data);
                 if ($status) {
                     foreach my $line (@lines) {
                         $self->stdout($line->{line}) if $line->{fh} eq "stdout";
                         $self->stderr($line->{line}) if $line->{fh} eq "stderr";
                     }
                 }
-            }
+            };
+            $spork->done($pid, $done);
+            $spork->waitx();
         } elsif ($use_pipes_and_such) {
             close($stdout_write) or die("close: $!");
             close($stderr_write) or die("close: $!");
 
-            my $pid1 = spork {
-                close($stderr_read) or die("close: $!");
-                select STDOUT; $| = 1;
-                local $_;
-                while (<$stdout_read>) {
-                    $self->stdout($_);
-                }
-                close($stdout_read) or die("close: $!");
-            };
+            my $pid1 = $spork->fork(
+                start => sub {
+                    close($stderr_read) or die("close: $!");
+                    select STDOUT; $| = 1;
+                    local $_;
+                    while (<$stdout_read>) {
+                        $self->stdout($_);
+                    }
+                    close($stdout_read) or die("close: $!");
+                },
+                done => sub {
+                    my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
+                    $wait->($pid, $status, $exit, $signal, $coredump, $data);
+                },
+                data => ["stdout pipe"],
+            );
             $proc{$pid1} = "stdout pipe";
 
-            my $pid2 = spork {
-                close($stdout_read) or die("close: $!");
-                select STDERR; $| = 1;
-                local $_;
-                while (<$stderr_read>) {
-                    $self->stderr($_);
-                }
-                close($stderr_read) or die("close: $!");
-            };
+            my $pid2 = $spork->fork(
+                start => sub {
+                    close($stdout_read) or do {
+                        if ($!{EBADF}) {
+                            exit(1);
+                        }
+                        die("close: $!");
+                    };
+                    select STDERR; $| = 1;
+                    local $_;
+                    while (<$stderr_read>) {
+                        $self->stderr($_);
+                    }
+                    close($stderr_read) or die("close: $!");
+                },
+                done => sub {
+                    my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
+                    $wait->($pid, $status, $exit, $signal, $coredump, $data);
+                },
+                data => ["stderr pipe"],
+            );
             $proc{$pid2} = "stderr pipe";
 
-            close($stdout_read) or die("close: $!");
-            close($stderr_read) or die("close: $!");
-
-            {
-                my $pid = wait();
-                $wait_report->($pid);
-            }
-            {
-                my $pid = wait();
-                $wait_report->($pid);
-            }
-            {
-                my $pid = wait();
-                $wait_report->($pid);
-            }
-        } else {
-            my $pid = wait();
-            $wait_report->($pid);
+            close($stdout_read) or do {
+                if ($!{EBADF}) {
+                    exit(1);
+                }
+                die("close: $!");
+            };
+            close($stderr_read) or do {
+                if ($!{EBADF}) {
+                    exit(1);
+                }
+                die("close: $!");
+            };
         }
+        $spork->waitx();
     }
 
     sub child_error_info {
@@ -583,5 +614,113 @@ package My::Git::Porcelain::All::Util {
             exit;
         }
         return $pid;
+    }
+};
+
+package My::Git::Porcelain::All::Spork {
+    use Moo;
+    INIT {
+        has 'processHash' => (is => 'rw', default => sub { return {}; } );
+        has 'die'         => (is => 'rw', default => 0);
+    }
+    sub fork {
+        my $self = shift;
+        my ($start, $done, $data);
+        if (scalar @_ == 2 &&
+                eval { ref $_[0] eq 'CODE' } &&
+                eval { ref $_[1] eq 'CODE' }) {
+            ($start, $done) = @_;
+        } elsif (scalar @_ == 3 &&
+                eval { ref $_[0] eq 'CODE' } &&
+                eval { ref $_[1] eq 'CODE' }) {
+            ($start, $done, $data) = @_;
+        } else {
+            my (%args) = @_;
+            $start = $args{start};
+            $done = $args{done};
+            $data = $args{data};
+        }
+        my $pid = fork();
+        if (!defined $pid) {
+            if ($self->die) {
+                die("fork: $!\n");
+            }
+            return;
+        }
+        if (!$pid) {
+            $start->();
+        }
+        $self->processHash->{$pid} = {
+            done => $done,
+            data => $data,
+        };
+        return $pid;
+    }
+    sub wait {
+        my ($self) = @_;
+        my $processHash = $self->processHash;
+        my $pid = wait();
+        if ($pid == -1) {  # no child processes
+            # This could mean child processes are being
+            # automatically reaped.  See perlipc(1).
+            if ($self->die) {
+                die("unexpected: no child process\n");
+            }
+            return;
+        }
+        if (!defined $pid) {
+            if ($self->die) {
+                die("unexpected: wait returned no child process id\n");
+            }
+            return;
+        }
+        my $process = $processHash->{$pid};
+        if (!defined $process) {
+            # child not spawned via this object.
+            if ($self->die) {
+                die("unexpected: wait returned pid not managed by this spork\n");
+            }
+            return;
+        }
+        delete $processHash->{$pid};
+        my $status = $?;
+        my $exit     = $status >> 8;
+        my $signal   = $status & 127;
+        my $coredump = $status & 128;
+        my $done = $process->{done};
+        if ($done && ref $done eq 'CODE') {
+            my $data = $process->{data};
+            $done->($pid, $status, $exit, $signal, $coredump, $data);
+        }
+        return ($pid, $process) if wantarray;
+        return $pid;
+    }
+    sub waitx {
+        my ($self) = @_;
+        my $processHash = $self->processHash;
+        my $numProcs = scalar keys %$processHash;
+        my $result = 0;
+        for (my $i = 0; $i < $numProcs; $i += 1) {
+            my $pid = $self->wait();
+            if (defined $pid) {
+                $result += 1;
+            }
+        }
+        return $result;
+    }
+    sub waitall {
+        my ($self) = @_;
+        my $processHash = $self->processHash;
+        while (scalar keys %$processHash) {
+            my $pid = $self->wait();
+        }
+        return;
+    }
+    sub done {
+        my ($self, $pid, $sub) = @_;
+        my $processHash = $self->processHash;
+        my $process = $processHash->{$pid};
+        return if !$process;
+        $process->{done} = $sub;
     }
 };
