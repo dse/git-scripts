@@ -96,6 +96,8 @@ package My::Git::Porcelain::All {
     sub new {
         my ($class) = @_;
         my $self = bless({}, $class);
+        $self->{verbose} = 0;
+        $self->{dry_run} = 0;
         return $self;
     }
 
@@ -185,7 +187,7 @@ package My::Git::Porcelain::All {
     sub is_in_git_repos {
         my ($self, %args) = @_;
         my $dir = $args{directory};
-        my $pid = spork {
+        my $spork = spork {
             close(\*STDOUT);
             close(\*STDERR);
             if (defined $dir && $dir ne ".") {
@@ -197,16 +199,8 @@ package My::Git::Porcelain::All {
                 die("exec git: $!");
             }
         };
-        if (waitpid($pid, 0) == -1) {
-            warn("unexpected: no child process\n");
-            return 0;           # failure
-        } else {
-            if ($?) {
-                return 0;       # failure
-            } else {
-                return 1;       # success
-            }
-        }
+        $spork->run();
+        return $spork->wait();
     }
 
     use File::Find;
@@ -358,7 +352,7 @@ package My::Git::Porcelain::All {
 
         my %proc;
 
-        my $pid = spork {
+        my $spork = spork {
             if (defined $reldir && $reldir ne ".") {
                 if (!chdir($reldir)) {
                     die("chdir $reldir: $!");
@@ -372,6 +366,11 @@ package My::Git::Porcelain::All {
                 die("exec $cmd[0]: $!");
             }
         };
+        $spork->run();
+        my $pid = $spork->pid();
+        if ($self->{verbose} >= 2) {
+            warn(sprintf("+ (pid %s)\n", $pid));
+        }
         if ($cmd[0] eq "git") {
             $proc{$pid} = "git $cmd[1]";
         } else {
@@ -397,6 +396,9 @@ package My::Git::Porcelain::All {
         };
 
         if ($self->{errors_only}) {
+            if ($self->{verbose} >= 2) {
+                warn("ERRORS ONLY\n");
+            }
             close($stdout_write) or die("close: $!");
             close($stderr_write) or die("close: $!");
 
@@ -454,7 +456,7 @@ package My::Git::Porcelain::All {
                 }
             }
             {
-                my $pid = wait();
+                my $pid_exited = wait();
                 my $status = $?;
                 if (-t 1) {
                     if ($status) {
@@ -470,7 +472,7 @@ package My::Git::Porcelain::All {
                     }
                 }
                 if (!$status) {
-                    $wait_report->($pid, $status);
+                    $wait_report->($pid_exited, $status);
                 }
                 if ($status) {
                     foreach my $line (@lines) {
@@ -480,10 +482,13 @@ package My::Git::Porcelain::All {
                 }
             }
         } elsif ($use_pipes_and_such) {
+            if ($self->{verbose} >= 2) {
+                warn("USE PIPES AND SUCH\n");
+            }
             close($stdout_write) or die("close: $!");
             close($stderr_write) or die("close: $!");
 
-            my $pid1 = spork {
+            my $spork1 = spork {
                 close($stderr_read) or die("close: $!");
                 select STDOUT; $| = 1;
                 local $_;
@@ -492,9 +497,11 @@ package My::Git::Porcelain::All {
                 }
                 close($stdout_read) or die("close: $!");
             };
+            $spork1->run();
+            my $pid1 = $spork1->pid();
             $proc{$pid1} = "stdout pipe";
 
-            my $pid2 = spork {
+            my $spork2 = spork {
                 close($stdout_read) or die("close: $!");
                 select STDERR; $| = 1;
                 local $_;
@@ -503,23 +510,28 @@ package My::Git::Porcelain::All {
                 }
                 close($stderr_read) or die("close: $!");
             };
+            $spork2->run();
+            my $pid2 = $spork2->pid();
             $proc{$pid2} = "stderr pipe";
 
             close($stdout_read) or die("close: $!");
             close($stderr_read) or die("close: $!");
 
             {
-                my $pid = wait();
-                $wait_report->($pid);
+                my $pid_exited = wait();
+                $wait_report->($pid_exited);
             }
             {
-                my $pid = wait();
-                $wait_report->($pid);
+                my $pid_exited = wait();
+                $wait_report->($pid_exited);
             }
             {
-                my $pid = wait();
-                $wait_report->($pid);
+                my $pid_exited = wait();
+                $wait_report->($pid_exited);
             }
+        } else {
+            my $pid_exited = wait();
+            $wait_report->($pid_exited);
         }
     }
 
@@ -571,14 +583,45 @@ package My::Git::Porcelain::All::Util {
 
     sub spork(&) {
         my ($sub) = @_;
-        my $pid = fork;
+        my $spork = My::Git::Porcelain::All::Spork->new();
+        $spork->sub($sub);
+        return $spork;
+    }
+};
+
+package My::Git::Porcelain::All::Spork {
+    use Moo;
+    BEGIN {
+        has 'pid'    => (is => 'rw');
+        has 'sub'    => (is => 'rw');
+        has 'status' => (is => 'rw');
+    }
+    sub run {
+        my ($self) = @_;
+        my $pid = fork();
         if (!defined $pid) {
             die("fork: $!\n");
         }
         if (!$pid) {
-            $sub->();
+            my $sub = $self->sub();
+            $self->$sub();
             exit;
         }
+        $self->pid($pid);
         return $pid;
     }
-};
+    sub wait {
+        my ($self) = @_;
+        my $pid = $self->pid;
+        if (waitpid($pid, 0) == -1) {
+            warn("waitpid: no child process\n");
+            return 0;           # failure
+        }
+        $self->status($?);
+        if ($self->status) {
+            return 0;           # failure
+        } else {
+            return 1;           # success
+        }
+    }
+}
