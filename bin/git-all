@@ -13,36 +13,36 @@ use File::Basename qw(basename);
 
 our $progname = basename($0);
 
-our $maxdepth;
-our $no_git;
+our $maxDepth;
+our $noGit;
 our $basename;
 our $inline;
-our $no_brackets;
+our $noBrackets;
 our $indent;
-our $no_pty;
+our $noPty;
 our $format;
-our $format_width;
+our $formatWidth;
 our $separator;
 our $verbose;
-our $dry_run;
-our $errors_only;
+our $dryRun;
+our $errorsOnly;
 
 use Getopt::Long;
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
-    "max-depth|maxdepth=i" => \$maxdepth,
-    "no-git"               => \$no_git,
+    "max-depth|maxdepth=i" => \$maxDepth,
+    "no-git"               => \$noGit,
     "basename"             => \$basename,
     "inline"               => \$inline,
-    "no-brackets"          => \$no_brackets,
+    "no-brackets"          => \$noBrackets,
     "indent"               => \$indent,
-    "no-pty"               => \$no_pty,
+    "no-pty"               => \$noPty,
     "format=s"             => \$format,
-    "format-width=i"       => \$format_width,
+    "format-width=i"       => \$formatWidth,
     "separator=s"          => \$separator,
     "v|verbose+"           => \$verbose,
-    "n|dry-run"            => \$dry_run,
-    "errors-only"          => \$errors_only,
+    "n|dry-run"            => \$dryRun,
+    "errors-only"          => \$errorsOnly,
     "h|help" => sub {
         usage(); exit(0);
     }
@@ -74,45 +74,45 @@ END
 
 $ENV{GIT_PAGER} = "cat";
 my $all = My::Git::Porcelain::All->new();
-$all->maxdepth($maxdepth)         if defined $maxdepth;
-$all->no_git($no_git)             if defined $no_git;
-$all->basename($basename)         if defined $basename;
-$all->inline($inline)             if defined $inline;
-$all->no_brackets($no_brackets)   if defined $no_brackets;
-$all->indent($indent)             if defined $indent;
-$all->no_pty($no_pty)             if defined $no_pty;
-$all->format($format)             if defined $format;
-$all->format_width($format_width) if defined $format_width;
-$all->separator($separator)       if defined $separator;
-$all->verbose($verbose)           if defined $verbose;
-$all->dry_run($dry_run)           if defined $dry_run;
-$all->errors_only($errors_only)   if defined $errors_only;
+$all->maxDepth($maxDepth)       if defined $maxDepth;
+$all->noGit($noGit)             if defined $noGit;
+$all->basename($basename)       if defined $basename;
+$all->inline($inline)           if defined $inline;
+$all->noBrackets($noBrackets)   if defined $noBrackets;
+$all->indent($indent)           if defined $indent;
+$all->noPty($noPty)             if defined $noPty;
+$all->format($format)           if defined $format;
+$all->formatWidth($formatWidth) if defined $formatWidth;
+$all->separator($separator)     if defined $separator;
+$all->verbose($verbose)         if defined $verbose;
+$all->dryRun($dryRun)           if defined $dryRun;
+$all->errorsOnly($errorsOnly)   if defined $errorsOnly;
 $all->run(@ARGV);
 
 package My::Git::Porcelain::All {
     use Moo;
 
     BEGIN {
-        has maxdepth         => (is => 'rw');
-        has no_git           => (is => 'rw');
-        has basename         => (is => 'rw');
-        has inline           => (is => 'rw');
-        has no_brackets      => (is => 'rw');
-        has indent           => (is => 'rw');
-        has no_pty           => (is => 'rw');
-        has format           => (is => 'rw');
-        has format_width     => (is => 'rw');
-        has separator        => (is => 'rw');
-        has verbose          => (is => 'rw', default => 0);
-        has dry_run          => (is => 'rw', default => 0);
-        has errors_only      => (is => 'rw');
-        has inline_separator => (is => 'rw');
-        has inline_prefix    => (is => 'rw');
+        has maxDepth        => (is => 'rw');
+        has noGit           => (is => 'rw');
+        has basename        => (is => 'rw');
+        has inline          => (is => 'rw');
+        has noBrackets      => (is => 'rw');
+        has indent          => (is => 'rw');
+        has noPty           => (is => 'rw');
+        has format          => (is => 'rw');
+        has formatWidth     => (is => 'rw');
+        has separator       => (is => 'rw');
+        has verbose         => (is => 'rw', default => 0);
+        has dryRun          => (is => 'rw', default => 0);
+        has errorsOnly      => (is => 'rw');
+        has inlineSeparator => (is => 'rw');
+        has inlinePrefix    => (is => 'rw');
 
-        has has_io_pty => (
+        has hasIoPty => (
             is => 'rw', lazy => 1, default => sub {
                 my $self = shift;
-                return 0 if $self->{no_pty};
+                return 0 if $self->noPty;
                 eval {
                     require IO::Pty;
                     import IO::Pty qw();
@@ -133,7 +133,7 @@ package My::Git::Porcelain::All {
     sub run {
         my ($self, @arguments) = @_;
 
-        my ($command, $arguments, $directories) = $self->split_arguments(arguments => \@arguments);
+        my ($command, $arguments, $directories) = $self->splitArguments(arguments => \@arguments);
         my @directories = @$directories;
         @arguments = @$arguments;
 
@@ -149,13 +149,13 @@ package My::Git::Porcelain::All {
         if (scalar @directories) {
             foreach my $directory (@directories) {
                 if (-d $directory) {
-                    if ($self->is_in_git_repos(directory => $directory)) {
-                        $self->run_git_command_in(directory => $directory,
-                                                  relative_directory => $directory,
+                    if ($self->isInGitRepos(directory => $directory)) {
+                        $self->runGitCommandIn(directory => $directory,
+                                                  relativeDirectory => $directory,
                                                   command => $command,
                                                   arguments => \@arguments);
                     } else {
-                        $self->recurse_here(directory => $directory,
+                        $self->recurseHere(directory => $directory,
                                             command => $command,
                                             arguments => \@arguments);
                     }
@@ -164,34 +164,34 @@ package My::Git::Porcelain::All {
                 }
             }
         } else {
-            if ($self->is_in_git_repos()) {
-                $self->run_git_command_in(directory => ".",
+            if ($self->isInGitRepos()) {
+                $self->runGitCommandIn(directory => ".",
                                           command => $command,
                                           arguments => \@arguments);
             } else {
-                $self->recurse_here(command => $command,
+                $self->recurseHere(command => $command,
                                     arguments => \@arguments);
             }
         }
     }
 
-    sub split_arguments {
+    sub splitArguments {
         my ($self, %args) = @_;
         my @arguments = @{$args{arguments}};
 
-        my $three_dashes_index = undef;
+        my $threeDashesIndex = undef;
       argument:
         for (my $i = 0; $i < @arguments; $i += 1) {
             if ($arguments[$i] eq "---") {
-                $three_dashes_index = $i;
+                $threeDashesIndex = $i;
                 last argument;
             }
         }
 
         my @directories;
-        if (defined $three_dashes_index) {
-            @directories = splice(@arguments, $three_dashes_index + 1);
-            splice(@arguments, $three_dashes_index);
+        if (defined $threeDashesIndex) {
+            @directories = splice(@arguments, $threeDashesIndex + 1);
+            splice(@arguments, $threeDashesIndex);
         }
 
         my $command = shift(@arguments);
@@ -207,7 +207,7 @@ package My::Git::Porcelain::All {
         }
     }
 
-    sub is_in_git_repos {
+    sub isInGitRepos {
         my ($self, %args) = @_;
         my $dir = $args{directory};
         my $spork = spork {
@@ -233,15 +233,15 @@ package My::Git::Porcelain::All {
     use File::Basename qw(dirname basename);
     use String::ShellQuote;
 
-    sub recurse_here {
+    sub recurseHere {
         my ($self, %args) = @_;
         my $depth = $args{depth} // 0;
         my $dir = $args{directory} // ".";
         my $command = $args{command};
         my @arguments = @{$args{arguments}};
 
-        if (defined $self->maxdepth) {
-            if ($depth > $self->maxdepth) {
+        if (defined $self->maxDepth) {
+            if ($depth > $self->maxDepth) {
                 return;
             }
         }
@@ -252,15 +252,15 @@ package My::Git::Porcelain::All {
                     my @splitdir = File::Spec->splitdir($File::Find::name);
                     my $splitdir = scalar @splitdir;
                     my $newdepth = $depth + $splitdir - 1;
-                    if (defined $self->maxdepth) {
-                        if ($newdepth > $self->maxdepth) {
+                    if (defined $self->maxDepth) {
+                        if ($newdepth > $self->maxDepth) {
                             $File::Find::prune = 1;
                             return;
                         }
                     }
-                    $self->run_git_command_in(depth => $newdepth,
+                    $self->runGitCommandIn(depth => $newdepth,
                                               directory => $File::Find::name,
-                                              relative_directory => $_,
+                                              relativeDirectory => $_,
                                               command => $command,
                                               arguments => \@arguments);
                     $File::Find::prune = 1;
@@ -275,8 +275,8 @@ package My::Git::Porcelain::All {
         local $_ = $line;
         s{\R\z}{};
         if ($self->inline) {
-            print STDOUT $self->inline_prefix;
-            print STDOUT $self->inline_separator if defined $self->inline_separator;
+            print STDOUT $self->inlinePrefix;
+            print STDOUT $self->inlineSeparator if defined $self->inlineSeparator;
         } elsif ($self->indent) {
             print STDOUT "    ";
         }
@@ -289,8 +289,8 @@ package My::Git::Porcelain::All {
         local $_ = $line;
         s{\R\z}{};
         if ($self->inline) {
-            print STDERR $self->inline_prefix;
-            print STDERR $self->inline_separator if defined $self->inline_separator;
+            print STDERR $self->inlinePrefix;
+            print STDERR $self->inlineSeparator if defined $self->inlineSeparator;
         } elsif ($self->indent) {
             print STDERR "    ";
         }
@@ -298,12 +298,12 @@ package My::Git::Porcelain::All {
         STDERR->flush();
     }
 
-    sub run_git_command_in {
+    sub runGitCommandIn {
         my ($self, %args) = @_;
         my $depth = $args{depth} // 1;
         my $dir = $args{directory} // ".";
         $dir =~ s{^\.\/(?=.)}{};
-        my $reldir = $args{relative_directory};
+        my $reldir = $args{relativeDirectory};
         my $command = $args{command};
         my @arguments = @{$args{arguments}};
         if ($command eq "list-git-directories") {
@@ -313,52 +313,52 @@ package My::Git::Porcelain::All {
 
         my $format = $self->format;
         if (!defined $format) {
-            $format = $self->no_brackets ? "%s" : "[%s]";
+            $format = $self->noBrackets ? "%s" : "[%s]";
             if ($self->inline) {
-                $format .= $self->no_brackets ? ":" : " ";
+                $format .= $self->noBrackets ? ":" : " ";
             }
         }
-        my $dir_header = $self->basename ? basename($dir) : $dir;
-        if (!$self->inline && !$self->errors_only) {
-            printf($format . "\n", $dir_header);
+        my $dirHeader = $self->basename ? basename($dir) : $dir;
+        if (!$self->inline && !$self->errorsOnly) {
+            printf($format . "\n", $dirHeader);
         }
-        my $inline_prefix = $self->inline && sprintf($format, $dir_header);
-        if (defined $self->format_width) {
-            $inline_prefix = sprintf("%-*s", $self->format_width, $inline_prefix);
+        my $inlinePrefix = $self->inline && sprintf($format, $dirHeader);
+        if (defined $self->formatWidth) {
+            $inlinePrefix = sprintf("%-*s", $self->formatWidth, $inlinePrefix);
         }
-        my $inline_separator = defined $self->separator ? String::Unescape->unescape($self->separator) : undef;
-        my $use_pipes_and_such = $self->indent || $self->inline || $self->errors_only;
+        my $inlineSeparator = defined $self->separator ? String::Unescape->unescape($self->separator) : undef;
+        my $usePipesAndSuch = $self->indent || $self->inline || $self->errorsOnly;
 
-        $self->inline_separator($inline_separator);
-        $self->inline_prefix($inline_prefix);
+        $self->inlineSeparator($inlineSeparator);
+        $self->inlinePrefix($inlinePrefix);
 
         # git <command> <args> writes to $*_write
-        # our first child process reads from $stdout_read
-        # our second child process reads from $stderr_read
-        my ($stdout_read, $stdout_write);
-        my ($stderr_read, $stderr_write);
-        if ($use_pipes_and_such) {
-            if ($self->has_io_pty) {
-                $stdout_read = IO::Pty->new(); # master
-                $stderr_read = IO::Pty->new(); # master
-                $stdout_write = $stdout_read->slave();
-                $stderr_write = $stderr_read->slave();
+        # our first child process reads from $stdoutRead
+        # our second child process reads from $stderrRead
+        my ($stdoutRead, $stdoutWrite);
+        my ($stderrRead, $stderrWrite);
+        if ($usePipesAndSuch) {
+            if ($self->hasIoPty) {
+                $stdoutRead = IO::Pty->new(); # master
+                $stderrRead = IO::Pty->new(); # master
+                $stdoutWrite = $stdoutRead->slave();
+                $stderrWrite = $stderrRead->slave();
             } else {
-                pipe($stdout_read, $stdout_write) or die("pipe: $!");
-                pipe($stderr_read, $stderr_write) or die("pipe: $!");
+                pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
+                pipe($stderrRead, $stderrWrite) or die("pipe: $!");
             }
         }
 
         my @cmd = ($command, @arguments);
-        if (!$self->no_git) {
+        if (!$self->noGit) {
             unshift(@cmd, "git");
         }
 
-        if ($self->verbose || $self->dry_run) {
+        if ($self->verbose || $self->dryRun) {
             warn(sprintf("+ %s\n", shell_quote(@cmd)));
         }
 
-        if ($self->dry_run) {
+        if ($self->dryRun) {
             return;
         }
 
@@ -370,9 +370,9 @@ package My::Git::Porcelain::All {
                     die("chdir $reldir: $!");
                 }
             }
-            if ($use_pipes_and_such) {
-                open(STDOUT, ">&", $stdout_write) or die("open: $!");
-                open(STDERR, ">&", $stderr_write) or die("open: $!");
+            if ($usePipesAndSuch) {
+                open(STDOUT, ">&", $stdoutWrite) or die("open: $!");
+                open(STDERR, ">&", $stderrWrite) or die("open: $!");
             }
             if (!exec(@cmd)) {
                 die("exec $cmd[0]: $!");
@@ -391,7 +391,7 @@ package My::Git::Porcelain::All {
 
         my ($pid1, $pid2);
 
-        my $wait_report = sub {
+        my $waitReport = sub {
             my ($pid, $status) = @_;
             $status //= $?;
             if ($pid == -1) {
@@ -401,31 +401,31 @@ package My::Git::Porcelain::All {
             } else {
                 my $proc = $proc{$pid};
                 if ($status && $self->verbose) {
-                    $self->warn_child_error($status, $proc);
+                    $self->warnChildError($status, $proc);
                 }
             }
             $? = $status;
         };
 
-        if ($self->errors_only) {
+        if ($self->errorsOnly) {
             if ($self->verbose >= 2) {
                 warn("ERRORS ONLY\n");
             }
-            close($stdout_write) or die("close: $!");
-            close($stderr_write) or die("close: $!");
+            close($stdoutWrite) or die("close: $!");
+            close($stderrWrite) or die("close: $!");
 
             STDOUT->autoflush(1);
             if (-t 1) {
                 # show each project while git <cmd> is doing its work
                 # on it.
-                printf($format, $dir_header);
+                printf($format, $dirHeader);
             }
 
-            my $clear_to_eol = (-t 1) && `tput el`;
+            my $clearToEol = (-t 1) && `tput el`;
 
             my $rin = '';
-            vec($rin, fileno($stdout_read), 1) = 1;
-            vec($rin, fileno($stderr_read), 1) = 1;
+            vec($rin, fileno($stdoutRead), 1) = 1;
+            vec($rin, fileno($stderrRead), 1) = 1;
 
             my @lines;
 
@@ -442,10 +442,10 @@ package My::Git::Porcelain::All {
                     last;
                 }
                 if (!$nfound) {
-                    last;
+                     last;
                 }
-                if (vec($rout, fileno($stdout_read), 1)) {
-                    my $line = <$stdout_read>;
+                if (vec($rout, fileno($stdoutRead), 1)) {
+                    my $line = <$stdoutRead>;
                     if (defined $line) {
                         push(@lines, { fh => "stdout", line => $line });
                     } else {
@@ -455,8 +455,8 @@ package My::Git::Porcelain::All {
                         last;
                     }
                 }
-                if (vec($rout, fileno($stderr_read), 1)) {
-                    my $line = <$stderr_read>;
+                if (vec($rout, fileno($stderrRead), 1)) {
+                    my $line = <$stderrRead>;
                     if (defined $line) {
                         push(@lines, { fh => "stderr", line => $line });
                     } else {
@@ -468,7 +468,7 @@ package My::Git::Porcelain::All {
                 }
             }
             {
-                my $pid_exited = wait();
+                my $pidExited = wait();
                 my $status = $?;
                 if (-t 1) {
                     if ($status) {
@@ -476,15 +476,15 @@ package My::Git::Porcelain::All {
                         print "\n";
                     } else {
                         # erase project name, no newline
-                        print "\r${clear_to_eol}";
+                        print "\r${clearToEol}";
                     }
                 } else {
                     if ($status) {
-                        printf($format . "\n", $dir_header);
+                        printf($format . "\n", $dirHeader);
                     }
                 }
                 if (!$status) {
-                    $wait_report->($pid_exited, $status);
+                    $waitReport->($pidExited, $status);
                 }
                 if ($status) {
                     foreach my $line (@lines) {
@@ -493,61 +493,61 @@ package My::Git::Porcelain::All {
                     }
                 }
             }
-        } elsif ($use_pipes_and_such) {
+        } elsif ($usePipesAndSuch) {
             if ($self->verbose >= 2) {
                 warn("USE PIPES AND SUCH\n");
             }
-            close($stdout_write) or die("close: $!");
-            close($stderr_write) or die("close: $!");
+            close($stdoutWrite) or die("close: $!");
+            close($stderrWrite) or die("close: $!");
 
             my $spork1 = spork {
-                close($stderr_read) or die("close: $!");
+                close($stderrRead) or die("close: $!");
                 select STDOUT; $| = 1;
                 local $_;
-                while (<$stdout_read>) {
+                while (<$stdoutRead>) {
                     $self->stdout($_);
                 }
-                close($stdout_read) or die("close: $!");
+                close($stdoutRead) or die("close: $!");
             };
             $spork1->run();
             my $pid1 = $spork1->pid();
             $proc{$pid1} = "stdout pipe";
 
             my $spork2 = spork {
-                close($stdout_read) or die("close: $!");
+                close($stdoutRead) or die("close: $!");
                 select STDERR; $| = 1;
                 local $_;
-                while (<$stderr_read>) {
+                while (<$stderrRead>) {
                     $self->stderr($_);
                 }
-                close($stderr_read) or die("close: $!");
+                close($stderrRead) or die("close: $!");
             };
             $spork2->run();
             my $pid2 = $spork2->pid();
             $proc{$pid2} = "stderr pipe";
 
-            close($stdout_read) or die("close: $!");
-            close($stderr_read) or die("close: $!");
+            close($stdoutRead) or die("close: $!");
+            close($stderrRead) or die("close: $!");
 
             {
-                my $pid_exited = wait();
-                $wait_report->($pid_exited);
+                my $pidExited = wait();
+                $waitReport->($pidExited);
             }
             {
-                my $pid_exited = wait();
-                $wait_report->($pid_exited);
+                my $pidExited = wait();
+                $waitReport->($pidExited);
             }
             {
-                my $pid_exited = wait();
-                $wait_report->($pid_exited);
+                my $pidExited = wait();
+                $waitReport->($pidExited);
             }
         } else {
-            my $pid_exited = wait();
-            $wait_report->($pid_exited);
+            my $pidExited = wait();
+            $waitReport->($pidExited);
         }
     }
 
-    sub child_error_info {
+    sub childErrorInfo {
         my ($self, $status) = @_;
         $status //= $?;
 
@@ -565,11 +565,11 @@ package My::Git::Porcelain::All {
         }
     }
 
-    sub warn_child_error {
+    sub warnChildError {
         my ($self, $status, @child) = @_;
         $status //= $?;
 
-        my ($exit, $signal, $coredump) = $self->child_error_info($status);
+        my ($exit, $signal, $coredump) = $self->childErrorInfo($status);
         if ($exit || $signal || $coredump) {
             my @message;
             push(@message, "returned $exit")      if $exit;
