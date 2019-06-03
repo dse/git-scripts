@@ -48,6 +48,10 @@ Getopt::Long::GetOptions(
     }
 ) or die("Do not type '$0 --help' for help yet.\n");
 
+if ($^O eq 'cygwin' && $errorsOnly) {
+    die("--errors-only is not supported on Cygwin.\n");
+}
+
 ###############################################################################
 sub usage { print <<"END"; }
 usage:
