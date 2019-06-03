@@ -467,32 +467,32 @@ package My::Git::Porcelain::All {
                     }
                 }
             }
-            {
-                my $pidExited = wait();
-                my $status = $?;
-                if (-t 1) {
-                    if ($status) {
-                        # keep project name visible on terminal
-                        print "\n";
-                    } else {
-                        # erase project name, no newline
-                        print "\r${clearToEol}";
-                    }
+
+            my $pidExited = wait();
+            my $waitStatus = $?;
+            if (-t 1) {
+                if ($waitStatus) {
+                    # keep project name visible on terminal
+                    print "\n";
                 } else {
-                    if ($status) {
-                        printf($format . "\n", $dirHeader);
-                    }
+                    # erase project name, no newline
+                    print "\r${clearToEol}";
                 }
-                if (!$status) {
-                    $waitReport->($pidExited, $status);
-                }
-                if ($status) {
-                    foreach my $line (@lines) {
-                        $self->stdout($line->{line}) if $line->{fh} eq "stdout";
-                        $self->stderr($line->{line}) if $line->{fh} eq "stderr";
-                    }
+            } else {
+                if ($waitStatus) {
+                    printf($format . "\n", $dirHeader);
                 }
             }
+            if (!$waitStatus) {
+                $waitReport->($pidExited, $waitStatus);
+            }
+            if ($waitStatus) {
+                foreach my $line (@lines) {
+                    $self->stdout($line->{line}) if $line->{fh} eq "stdout";
+                    $self->stderr($line->{line}) if $line->{fh} eq "stderr";
+                }
+            }
+
         } elsif ($usePipesAndSuch) {
             if ($self->verbose >= 2) {
                 warn("USE PIPES AND SUCH\n");
