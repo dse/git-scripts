@@ -73,21 +73,21 @@ END
 ###############################################################################
 
 $ENV{GIT_PAGER} = "cat";
-my $recurse = My::Git::Porcelain::All->new();
-$recurse->{maxdepth}     = $maxdepth     if defined $maxdepth;
-$recurse->{no_git}       = $no_git       if defined $no_git;
-$recurse->{basename}     = $basename     if defined $basename;
-$recurse->{inline}       = $inline       if defined $inline;
-$recurse->{no_brackets}  = $no_brackets  if defined $no_brackets;
-$recurse->{indent}       = $indent       if defined $indent;
-$recurse->{no_pty}       = $no_pty       if defined $no_pty;
-$recurse->{format}       = $format       if defined $format;
-$recurse->{format_width} = $format_width if defined $format_width;
-$recurse->{separator}    = $separator    if defined $separator;
-$recurse->{verbose}      = $verbose      if defined $verbose;
-$recurse->{dry_run}      = $dry_run      if defined $dry_run;
-$recurse->{errors_only}  = $errors_only  if defined $errors_only;
-$recurse->run(@ARGV);
+my $all = My::Git::Porcelain::All->new();
+$all->{maxdepth}     = $maxdepth     if defined $maxdepth;
+$all->{no_git}       = $no_git       if defined $no_git;
+$all->{basename}     = $basename     if defined $basename;
+$all->{inline}       = $inline       if defined $inline;
+$all->{no_brackets}  = $no_brackets  if defined $no_brackets;
+$all->{indent}       = $indent       if defined $indent;
+$all->{no_pty}       = $no_pty       if defined $no_pty;
+$all->{format}       = $format       if defined $format;
+$all->{format_width} = $format_width if defined $format_width;
+$all->{separator}    = $separator    if defined $separator;
+$all->{verbose}      = $verbose      if defined $verbose;
+$all->{dry_run}      = $dry_run      if defined $dry_run;
+$all->{errors_only}  = $errors_only  if defined $errors_only;
+$all->run(@ARGV);
 
 package My::Git::Porcelain::All {
 
