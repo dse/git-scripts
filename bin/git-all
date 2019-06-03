@@ -421,7 +421,7 @@ package My::Git::Porcelain::All {
                 printf($format, $dir_header);
             }
 
-            my $clear_to_eol = (-t 1) && `tput ce`;
+            my $clear_to_eol = (-t 1) && `tput el`;
 
             my $rin = '';
             vec($rin, fileno($stdout_read), 1) = 1;
