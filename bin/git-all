@@ -74,30 +74,59 @@ END
 
 $ENV{GIT_PAGER} = "cat";
 my $all = My::Git::Porcelain::All->new();
-$all->{maxdepth}     = $maxdepth     if defined $maxdepth;
-$all->{no_git}       = $no_git       if defined $no_git;
-$all->{basename}     = $basename     if defined $basename;
-$all->{inline}       = $inline       if defined $inline;
-$all->{no_brackets}  = $no_brackets  if defined $no_brackets;
-$all->{indent}       = $indent       if defined $indent;
-$all->{no_pty}       = $no_pty       if defined $no_pty;
-$all->{format}       = $format       if defined $format;
-$all->{format_width} = $format_width if defined $format_width;
-$all->{separator}    = $separator    if defined $separator;
-$all->{verbose}      = $verbose      if defined $verbose;
-$all->{dry_run}      = $dry_run      if defined $dry_run;
-$all->{errors_only}  = $errors_only  if defined $errors_only;
+$all->maxdepth($maxdepth)         if defined $maxdepth;
+$all->no_git($no_git)             if defined $no_git;
+$all->basename($basename)         if defined $basename;
+$all->inline($inline)             if defined $inline;
+$all->no_brackets($no_brackets)   if defined $no_brackets;
+$all->indent($indent)             if defined $indent;
+$all->no_pty($no_pty)             if defined $no_pty;
+$all->format($format)             if defined $format;
+$all->format_width($format_width) if defined $format_width;
+$all->separator($separator)       if defined $separator;
+$all->verbose($verbose)           if defined $verbose;
+$all->dry_run($dry_run)           if defined $dry_run;
+$all->errors_only($errors_only)   if defined $errors_only;
 $all->run(@ARGV);
 
 package My::Git::Porcelain::All {
+    use Moo;
+
+    BEGIN {
+        has maxdepth         => (is => 'rw');
+        has no_git           => (is => 'rw');
+        has basename         => (is => 'rw');
+        has inline           => (is => 'rw');
+        has no_brackets      => (is => 'rw');
+        has indent           => (is => 'rw');
+        has no_pty           => (is => 'rw');
+        has format           => (is => 'rw');
+        has format_width     => (is => 'rw');
+        has separator        => (is => 'rw');
+        has verbose          => (is => 'rw', default => 0);
+        has dry_run          => (is => 'rw', default => 0);
+        has errors_only      => (is => 'rw');
+        has inline_separator => (is => 'rw');
+        has inline_prefix    => (is => 'rw');
+
+        has has_io_pty => (
+            is => 'rw', lazy => 1, default => sub {
+                my $self = shift;
+                return 0 if $self->{no_pty};
+                eval {
+                    require IO::Pty;
+                    import IO::Pty qw();
+                };
+                return $@ ? 0 : 1;
+            },
+        );
+    }
 
     use String::Unescape;
 
     sub new {
         my ($class) = @_;
         my $self = bless({}, $class);
-        $self->{verbose} = 0;
-        $self->{dry_run} = 0;
         return $self;
     }
 
@@ -210,17 +239,6 @@ package My::Git::Porcelain::All {
     use File::Basename qw(dirname basename);
     use String::ShellQuote;
 
-    sub has_io_pty {
-        my ($self) = @_;
-        return 0 if $self->{no_pty};
-        return $self->{has_io_pty} if defined $self->{has_io_pty};
-        eval {
-            require IO::Pty;
-            import IO::Pty qw();
-        };
-        return $self->{has_io_pty} = $@ ? 0 : 1;
-    }
-
     sub recurse_here {
         my ($self, %args) = @_;
         my $depth = $args{depth} // 0;
@@ -228,8 +246,8 @@ package My::Git::Porcelain::All {
         my $command = $args{command};
         my @arguments = @{$args{arguments}};
 
-        if (defined $self->{maxdepth}) {
-            if ($depth > $self->{maxdepth}) {
+        if (defined $self->maxdepth) {
+            if ($depth > $self->maxdepth) {
                 return;
             }
         }
@@ -240,8 +258,8 @@ package My::Git::Porcelain::All {
                     my @splitdir = File::Spec->splitdir($File::Find::name);
                     my $splitdir = scalar @splitdir;
                     my $newdepth = $depth + $splitdir - 1;
-                    if (defined $self->{maxdepth}) {
-                        if ($newdepth > $self->{maxdepth}) {
+                    if (defined $self->maxdepth) {
+                        if ($newdepth > $self->maxdepth) {
                             $File::Find::prune = 1;
                             return;
                         }
@@ -262,10 +280,10 @@ package My::Git::Porcelain::All {
         my ($self, $line) = @_;
         local $_ = $line;
         s{\R\z}{};
-        if ($self->{inline}) {
-            print STDOUT $self->{inline_prefix};
-            print STDOUT $self->{inline_separator} if defined $self->{inline_separator};
-        } elsif ($self->{indent}) {
+        if ($self->inline) {
+            print STDOUT $self->inline_prefix;
+            print STDOUT $self->inline_separator if defined $self->inline_separator;
+        } elsif ($self->indent) {
             print STDOUT "    ";
         }
         print STDOUT "$_\n";
@@ -276,10 +294,10 @@ package My::Git::Porcelain::All {
         my ($self, $line) = @_;
         local $_ = $line;
         s{\R\z}{};
-        if ($self->{inline}) {
-            print STDERR $self->{inline_prefix};
-            print STDERR $self->{inline_separator} if defined $self->{inline_separator};
-        } elsif ($self->{indent}) {
+        if ($self->inline) {
+            print STDERR $self->inline_prefix;
+            print STDERR $self->inline_separator if defined $self->inline_separator;
+        } elsif ($self->indent) {
             print STDERR "    ";
         }
         print STDERR "$_\n";
@@ -299,26 +317,26 @@ package My::Git::Porcelain::All {
             return;
         }
 
-        my $format = $self->{format};
+        my $format = $self->format;
         if (!defined $format) {
-            $format = $self->{no_brackets} ? "%s" : "[%s]";
-            if ($self->{inline}) {
-                $format .= $self->{no_brackets} ? ":" : " ";
+            $format = $self->no_brackets ? "%s" : "[%s]";
+            if ($self->inline) {
+                $format .= $self->no_brackets ? ":" : " ";
             }
         }
-        my $dir_header = $self->{basename} ? basename($dir) : $dir;
-        if (!$self->{inline} && !$self->{errors_only}) {
+        my $dir_header = $self->basename ? basename($dir) : $dir;
+        if (!$self->inline && !$self->errors_only) {
             printf($format . "\n", $dir_header);
         }
-        my $inline_prefix = $self->{inline} && sprintf($format, $dir_header);
-        if (defined $self->{format_width}) {
-            $inline_prefix = sprintf("%-*s", $self->{format_width}, $inline_prefix);
+        my $inline_prefix = $self->inline && sprintf($format, $dir_header);
+        if (defined $self->format_width) {
+            $inline_prefix = sprintf("%-*s", $self->format_width, $inline_prefix);
         }
-        my $inline_separator = defined $self->{separator} ? String::Unescape->unescape($self->{separator}) : undef;
-        my $use_pipes_and_such = $self->{indent} || $self->{inline} || $self->{errors_only};
+        my $inline_separator = defined $self->separator ? String::Unescape->unescape($self->separator) : undef;
+        my $use_pipes_and_such = $self->indent || $self->inline || $self->errors_only;
 
-        $self->{inline_separator} = $inline_separator;
-        $self->{inline_prefix} = $inline_prefix;
+        $self->inline_separator($inline_separator);
+        $self->inline_prefix($inline_prefix);
 
         # git <command> <args> writes to $*_write
         # our first child process reads from $stdout_read
@@ -338,15 +356,15 @@ package My::Git::Porcelain::All {
         }
 
         my @cmd = ($command, @arguments);
-        if (!$self->{no_git}) {
+        if (!$self->no_git) {
             unshift(@cmd, "git");
         }
 
-        if ($self->{verbose} || $self->{dry_run}) {
+        if ($self->verbose || $self->dry_run) {
             warn(sprintf("+ %s\n", shell_quote(@cmd)));
         }
 
-        if ($self->{dry_run}) {
+        if ($self->dry_run) {
             return;
         }
 
@@ -368,7 +386,7 @@ package My::Git::Porcelain::All {
         };
         $spork->run();
         my $pid = $spork->pid();
-        if ($self->{verbose} >= 2) {
+        if ($self->verbose >= 2) {
             warn(sprintf("+ (pid %s)\n", $pid));
         }
         if ($cmd[0] eq "git") {
@@ -388,15 +406,15 @@ package My::Git::Porcelain::All {
                 warn("unexpected: wait returned undefined\n");
             } else {
                 my $proc = $proc{$pid};
-                if ($status && $self->{verbose}) {
+                if ($status && $self->verbose) {
                     $self->warn_child_error($status, $proc);
                 }
             }
             $? = $status;
         };
 
-        if ($self->{errors_only}) {
-            if ($self->{verbose} >= 2) {
+        if ($self->errors_only) {
+            if ($self->verbose >= 2) {
                 warn("ERRORS ONLY\n");
             }
             close($stdout_write) or die("close: $!");
@@ -482,7 +500,7 @@ package My::Git::Porcelain::All {
                 }
             }
         } elsif ($use_pipes_and_such) {
-            if ($self->{verbose} >= 2) {
+            if ($self->verbose >= 2) {
                 warn("USE PIPES AND SUCH\n");
             }
             close($stdout_write) or die("close: $!");
