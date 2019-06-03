@@ -124,12 +124,6 @@ package My::Git::Porcelain::All {
 
     use String::Unescape;
 
-    sub new {
-        my ($class) = @_;
-        my $self = bless({}, $class);
-        return $self;
-    }
-
     # use My::Git::Porcelain::All::Util qw(spork);
     sub spork(&);
     INIT {
