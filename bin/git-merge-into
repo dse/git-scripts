@@ -8,10 +8,22 @@ dirname="$(dirname "$0")"
 . "${dirname}/../share/bash-getlongopts/getlongopts.sh"
 . "${dirname}/../share/git-scripts/git-scripts.sh"
 
+temp="$(mktemp)"
+
 main () {
     if (( $# < 1 )) ; then
         >&2 echo "usage: git merge-into <branch>"
         exit 1
+    fi
+
+    git status --no-ahead-behind --short >"${temp}"
+
+    if grep . "${temp}" >/dev/null 2>/dev/null ; then croak 1 <<EOF
+       |
+       |*** You have uncommitted, unstaged, and/or untracked changes/files.
+       |    Please remedy this before running 'git merge-into'.
+       |    Use 'git stash -u' to include untracked files when stashing.
+EOF
     fi
 
     local dest source
