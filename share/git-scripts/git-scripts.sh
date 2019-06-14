@@ -1,5 +1,13 @@
 # -*- mode: sh; sh-shell: bash -*-
 
+declare -a _tempfiles
+
+mktemp () {
+    local tempfile="$(command mktemp "$@")"
+    _tempfiles+=("${tempfile}")
+    echo "${tempfile}"
+}
+
 run () {
     if (( verbose || dry_run )) ; then
         >&2 echo "+ ${@@Q}"
@@ -11,22 +19,35 @@ run () {
 }
 
 croak () {
+    local exitstatus source current
+
     sed 's/^[ '$'\t'']*|//' >&2
 
-    local exitstatus="$1"; shift
-    local source="$1"; shift
+    exitstatus="$1"; shift
+    source="$1"; shift
 
     if [[ "${exitstatus}" == "" ]] ; then
         exitstatus=1
-    else true ; fi
+    else
+        true
+    fi
 
-    local current
-    current="$(git rev-parse --abbrev-ref HEAD)"
+    if [[ -n "${source}" ]] ; then
+        current="$(git rev-parse --abbrev-ref HEAD)"
 
-    if [[ "${source}" != "" ]] && [[ "${current}" != "${source}" ]] ; then
-        >&2 echo ""
-        >&2 echo "    YOU ARE STILL IN BRANCH ${current}."
-    else true ; fi
+        if [[ "${source}" != "" ]] && [[ "${current}" != "${source}" ]] ; then
+            >&2 echo ""
+            >&2 echo "    YOU ARE STILL IN BRANCH ${current}."
+        else
+            true
+        fi
+    fi
+
+    local tempfile
+
+    if (( ${#_tempfiles[@]} )) ; then
+        /bin/rm "${_tempfiles[@]}"
+    fi
 
     >&2 echo
     >&2 echo "Exiting."
