@@ -27,6 +27,7 @@ difff_options=(
 )
 
 difff_arguments=(
+    ":(exclude,icase)package-lock.json"
     ":(exclude,icase)composer.lock"
     ":(exclude,icase)*.min.css"
     ":(exclude,icase)*.css.map"
