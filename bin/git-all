@@ -82,19 +82,19 @@ END
 
 $ENV{GIT_PAGER} = "cat";
 my $all = My::Git::Porcelain::All->new();
-$all->maxDepth($maxDepth)       if defined $maxDepth;
-$all->noGit($noGit)             if defined $noGit;
-$all->printBasename($printBasename)       if defined $printBasename;
-$all->inline($inline)           if defined $inline;
-$all->noBrackets($noBrackets)   if defined $noBrackets;
-$all->indent($indent)           if defined $indent;
-$all->noPty($noPty)             if defined $noPty;
-$all->format($format)           if defined $format;
-$all->formatWidth($formatWidth) if defined $formatWidth;
-$all->separator($separator)     if defined $separator;
-$all->verbose($verbose)         if defined $verbose;
-$all->dryRun($dryRun)           if defined $dryRun;
-$all->errorsOnly($errorsOnly)   if defined $errorsOnly;
+$all->maxDepth($maxDepth)           if defined $maxDepth;
+$all->noGit($noGit)                 if defined $noGit;
+$all->printBasename($printBasename) if defined $printBasename;
+$all->inline($inline)               if defined $inline;
+$all->noBrackets($noBrackets)       if defined $noBrackets;
+$all->indent($indent)               if defined $indent;
+$all->noPty($noPty)                 if defined $noPty;
+$all->format($format)               if defined $format;
+$all->formatWidth($formatWidth)     if defined $formatWidth;
+$all->separator($separator)         if defined $separator;
+$all->verbose($verbose)             if defined $verbose;
+$all->dryRun($dryRun)               if defined $dryRun;
+$all->errorsOnly($errorsOnly)       if defined $errorsOnly;
 $all->run(@ARGV);
 
 package My::Git::Porcelain::All {
