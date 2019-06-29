@@ -103,7 +103,7 @@ package My::Git::Porcelain::All {
     BEGIN {
         has maxDepth        => (is => 'rw');
         has noGit           => (is => 'rw');
-        has printBasename        => (is => 'rw');
+        has printBasename   => (is => 'rw');
         has inline          => (is => 'rw');
         has noBrackets      => (is => 'rw');
         has indent          => (is => 'rw');
