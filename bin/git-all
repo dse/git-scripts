@@ -159,13 +159,13 @@ package My::Git::Porcelain::All {
                 if (-d $directory) {
                     if ($self->isInGitRepos(directory => $directory)) {
                         $self->runGitCommandIn(directory => $directory,
-                                                  relativeDirectory => $directory,
-                                                  command => $command,
-                                                  arguments => \@arguments);
+                                               relativeDirectory => $directory,
+                                               command => $command,
+                                               arguments => \@arguments);
                     } else {
                         $self->recurseHere(directory => $directory,
-                                            command => $command,
-                                            arguments => \@arguments);
+                                           command => $command,
+                                           arguments => \@arguments);
                     }
                 } else {
                     warn("$directory: not a directory\n");
@@ -174,11 +174,11 @@ package My::Git::Porcelain::All {
         } else {
             if ($self->isInGitRepos()) {
                 $self->runGitCommandIn(directory => ".",
-                                          command => $command,
-                                          arguments => \@arguments);
+                                       command => $command,
+                                       arguments => \@arguments);
             } else {
                 $self->recurseHere(command => $command,
-                                    arguments => \@arguments);
+                                   arguments => \@arguments);
             }
         }
     }
@@ -267,10 +267,10 @@ package My::Git::Porcelain::All {
                         }
                     }
                     $self->runGitCommandIn(depth => $newdepth,
-                                              directory => $File::Find::name,
-                                              relativeDirectory => $_,
-                                              command => $command,
-                                              arguments => \@arguments);
+                                           directory => $File::Find::name,
+                                           relativeDirectory => $_,
+                                           command => $command,
+                                           arguments => \@arguments);
                     $File::Find::prune = 1;
                 }
             }
@@ -450,7 +450,7 @@ package My::Git::Porcelain::All {
                     last;
                 }
                 if (!$nfound) {
-                     last;
+                    last;
                 }
                 if (vec($rout, fileno($stdoutRead), 1)) {
                     my $line = <$stdoutRead>;
