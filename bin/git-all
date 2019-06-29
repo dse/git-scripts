@@ -33,19 +33,19 @@ our $errorsOnly;
 
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
-    "max-depth|maxdepth=i" => \$maxDepth,
-    "no-git"               => \$noGit,
+    "max-depth|maxdepth=i"    => \$maxDepth,
+    "no-git"                  => \$noGit,
     "basename|print-basename" => \$printBasename,
-    "inline"               => \$inline,
-    "no-brackets"          => \$noBrackets,
-    "indent"               => \$indent,
-    "no-pty"               => \$noPty,
-    "format=s"             => \$format,
-    "format-width=i"       => \$formatWidth,
-    "separator=s"          => \$separator,
-    "v|verbose+"           => \$verbose,
-    "n|dry-run"            => \$dryRun,
-    "errors-only"          => \$errorsOnly,
+    "inline"                  => \$inline,
+    "no-brackets"             => \$noBrackets,
+    "indent"                  => \$indent,
+    "no-pty"                  => \$noPty,
+    "format=s"                => \$format,
+    "format-width=i"          => \$formatWidth,
+    "separator=s"             => \$separator,
+    "v|verbose+"              => \$verbose,
+    "n|dry-run"               => \$dryRun,
+    "errors-only"             => \$errorsOnly,
     "h|help" => sub {
         usage(); exit(0);
     }
