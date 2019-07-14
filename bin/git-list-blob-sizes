@@ -9,6 +9,9 @@ use IPC::Run;
 use File::Temp qw(tempfile);
 
 my ($tempFh, $tempFilename) = tempfile();
+END {
+    unlink($tempFilename) if defined $tempFilename;
+}
 
 my $rootDir = `git rev-parse --show-toplevel`;
 $rootDir =~ s{\R\z}{};
@@ -55,6 +58,7 @@ sub findUnpackedObjects {
         push(@objects, $object) if defined wantarray && wantarray;
         $numObjects += 1 if defined wantarray && !wantarray;
     }
+    close($tempFh);
     return @objects if wantarray;
     return $numObjects;
 }
