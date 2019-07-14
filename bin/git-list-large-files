@@ -1,7 +1,57 @@
-#!/usr/bin/env bash
-# hat tip: https://gist.github.com/barrysteyn/2ba947313e0a4ad086c3
-git rev-list --objects --all | sort -k 2 > allfileshas.txt
-git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
-for SHA in `cut -f 1 -d\  < bigobjects.txt`; do
-    echo $(grep $SHA bigobjects.txt) $(grep $SHA allfileshas.txt) | awk '{print$1,$3,$7}' >> bigtosmall.txt
-done
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use v5.10.0;
+
+use File::Glob qw(bsd_glob);
+use File::Basename qw(dirname basename);
+
+my $rootDir = `git rev-parse --show-toplevel`;
+$rootDir =~ s{\R\z}{};
+
+warn("Finding unpacked objects...\n");
+my @unpackedObjects = findUnpackedObjects();
+warn("Finding packed objects...\n");
+my @packedObjects   = findPackedObjects();
+my @objects = (@unpackedObjects, @packedObjects);
+
+foreach my $object (@objects) {
+    printf("%10d %s\n", $object->{size}, $object->{id});
+}
+
+sub findUnpackedObjects {
+    my @objDir = grep { -d $_ } bsd_glob($rootDir . '/.git/objects/[0-9A-Fa-f][0-9A-Fa-f]');
+    my @objects;
+    foreach my $objDir (@objDir) {
+        foreach my $filename (bsd_glob($objDir . '/*')) {
+            if (-f $filename) {
+                push(@objects, {
+                    packed => 0,
+                    filename => $filename,
+                    id => basename(dirname($filename)) . basename($filename),
+                    size => -s _
+                });
+            }
+        }
+    }
+    return @objects;
+}
+
+sub findPackedObjects {
+    my $ph;
+    my @index = bsd_glob($rootDir . '/.git/objects/pack/pack-*.idx');
+    return unless scalar @index;
+    open($ph, '-|', 'git', 'verify-pack', '-v', @index) or return;
+    my @objects;
+    while (<$ph>) {
+        s{\R\z}{};
+        my ($id, $type, $size) = split(/\s+/);
+        next if !defined $type || $type ne 'blob';
+        push(@objects, {
+            packed => 1,
+            id => $id,
+            size => $size
+        });
+    }
+    return @objects;
+}
