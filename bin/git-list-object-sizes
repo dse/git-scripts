@@ -5,53 +5,91 @@ use v5.10.0;
 
 use File::Glob qw(bsd_glob);
 use File::Basename qw(dirname basename);
+use IPC::Run;
+use File::Temp qw(tempfile);
+
+my ($tempFh, $tempFilename) = tempfile();
 
 my $rootDir = `git rev-parse --show-toplevel`;
 $rootDir =~ s{\R\z}{};
 
-warn("Finding unpacked objects...\n");
-my @unpackedObjects = findUnpackedObjects();
-warn("Finding packed objects...\n");
-my @packedObjects   = findPackedObjects();
-my @objects = (@unpackedObjects, @packedObjects);
-
-foreach my $object (@objects) {
-    printf("%10d %s\n", $object->{size}, $object->{id});
-}
+findUnpackedObjects(
+    sub {
+        my $object = shift;
+        printf("%10d %s\n", $object->{size}, $object->{id});
+    }
+);
+findPackedObjects(
+    sub {
+        my $object = shift;
+        printf("%10d %s\n", $object->{size}, $object->{id});
+    }
+);
 
 sub findUnpackedObjects {
+    my $sub = shift;
     my @objDir = grep { -d $_ } bsd_glob($rootDir . '/.git/objects/[0-9A-Fa-f][0-9A-Fa-f]');
     my @objects;
+    my $numObjects;
     foreach my $objDir (@objDir) {
         foreach my $filename (bsd_glob($objDir . '/*')) {
             if (-f $filename) {
-                push(@objects, {
-                    packed => 0,
-                    filename => $filename,
-                    id => basename(dirname($filename)) . basename($filename),
-                    size => -s _
-                });
+                my $id = basename(dirname($filename)) . basename($filename);
+                print $tempFh "$id\n";
             }
         }
     }
-    return @objects;
+    my $ph;
+    open($ph, '-|', sprintf('sh -c "git cat-file --batch-check <%s"', $tempFilename)) or return;
+    while (<$ph>) {
+        s{\R\z}{};
+        my ($id, $type, $size) = split(' ');
+        next if !defined $type || $type ne 'blob';
+        my $object = {
+            packed => 1,
+            id => $id,
+            size => $size,
+            type => 'blob'
+        };
+        $sub->($object) if defined $sub && ref $sub eq 'CODE';
+        push(@objects, $object) if defined wantarray && wantarray;
+        $numObjects += 1 if defined wantarray && !wantarray;
+    }
+    return @objects if wantarray;
+    return $numObjects;
 }
 
 sub findPackedObjects {
+    my $sub = shift;
     my $ph;
     my @index = bsd_glob($rootDir . '/.git/objects/pack/pack-*.idx');
     return unless scalar @index;
     open($ph, '-|', 'git', 'verify-pack', '-v', @index) or return;
     my @objects;
+    my $numObjects;
     while (<$ph>) {
         s{\R\z}{};
-        my ($id, $type, $size) = split(/\s+/);
+        my ($id, $type, $size) = split(' ');
         next if !defined $type || $type ne 'blob';
-        push(@objects, {
+        my $object = {
             packed => 1,
             id => $id,
-            size => $size
-        });
+            size => $size,
+            type => 'blob'
+        };
+        $sub->($object) if defined $sub && ref $sub eq 'CODE';
+        push(@objects, $object) if defined wantarray && wantarray;
+        $numObjects += 1 if defined wantarray && !wantarray;
     }
-    return @objects;
+    return @objects if wantarray;
+    return $numObjects;
+}
+
+sub gitObjectType {
+    my $id = shift;
+    my $ph;
+    open($ph, '-|', 'git', 'cat-file', '-t', $id) or return;
+    my $type = <$ph>;
+    $type =~ s{\R\z}{};
+    return $type;
 }
