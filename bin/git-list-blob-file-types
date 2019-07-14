@@ -1,0 +1,42 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use v5.10.0;
+
+use File::Temp qw(tempfile);
+
+my ($tempFh, $tempFilename) = tempfile();
+END {
+    unlink($tempFilename) if defined $tempFilename;
+}
+
+my @ids;
+while (<>) {
+    s{\R\z}{};
+    foreach my $id (grep { m{^[[:xdigit:]]{32,}$} } split(/\s+/)) {
+        print $tempFh "$id\n";
+        push(@ids, $id);
+    }
+}
+close($tempFh);
+
+warn(sprintf("%s ids gotten\n", scalar @ids));
+
+my %size;
+
+my $ph;
+if (open($ph, '-|', sprintf('sh -c "git cat-file --batch-check <%s"', $tempFilename))) {
+    while (<$ph>) {
+        s{\R\z}{};
+        my ($id, $type, $size) = split(' ');
+        $size{$id} = $size;
+    }
+}
+
+my $count = 0;
+foreach my $id (@ids) {
+    next unless $size{$id};
+    $count += 1;
+    printf("%6d. %s: %-10d ", $count, $id, $size{$id});
+    system("git cat-file blob $id | file -P bytes=1024 -b -");
+}
