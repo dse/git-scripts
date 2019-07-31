@@ -12,7 +12,7 @@ temp="$(mktemp)"
 
 main () {
     if (( $# < 1 )) ; then
-        >&2 echo "usage: git merge-into <branch>"
+        >&2 echo "usage: git merge-into <dest-branch>"
         exit 1
     fi
 
@@ -31,26 +31,31 @@ EOF
     dest="$1"
     source="$(git rev-parse --abbrev-ref HEAD)"
 
+    >&2 echo "+ git checkout ${dest}"
     git checkout "${dest}" || croak $? "${source}" <<EOF
         |
         |*** \`git checkout ${dest}\` failed.
 EOF
 
+    >&2 echo "+ git pull"
     git pull || croak $? "${source}" <<EOF
         |
         |*** \`git pull\` into ${dest} failed.
 EOF
 
+    >&2 echo "+ git merge --no-edit ${source}"
     git merge --no-edit "${source}" || croak $? "${source}" <<EOF
         |
         |*** \`git merge --no-edit ${source}\` into ${dest} failed.
 EOF
 
+    >&2 echo "+ git push"
     git push || croak $? "${source}" <<EOF
         |
         |*** checkout and merge successful, but \`git push\` from ${dest} failed.
 EOF
 
+    >&2 echo "+ git checkout ${source}"
     git checkout "${source}" || croak $? "${source}" <<EOF
         |
         |*** checkout, merge, and push successful, but \`git checkout ${source}\` failed.
