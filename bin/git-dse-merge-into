@@ -5,10 +5,25 @@ set -o pipefail
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
-. "${dirname}/../share/bash-getlongopts/getlongopts.sh"
-. "${dirname}/../share/git-scripts/git-scripts.sh"
+RUN () {
+    >&2 echo "+ ${@@Q}"
+    if (( dry_run )) ; then
+        return
+    fi
+    "$@"
+}
 
-temp="$(mktemp)"
+FAIL () {
+    if [[ -n "${source}" ]] ; then
+        current="$(git rev-parse --abbrev-ref HEAD)"
+        if [[ "${source}" != "" ]] && [[ "${current}" != "${source}" ]] ; then
+            >&2 echo
+            >&2 echo "    YOU ARE STILL IN BRANCH ${current}."
+        else
+            true
+        fi
+    fi
+}
 
 main () {
     if (( $# < 1 )) ; then
@@ -16,55 +31,51 @@ main () {
         exit 1
     fi
 
-    git status --no-ahead-behind --short >"${temp}"
-
-    if grep . "${temp}" >/dev/null 2>/dev/null ; then croak 1 <<EOF
-        |
-        |*** You have uncommitted, unstaged, and/or untracked changes/files.
-        |    Please remedy this before running 'git merge-into'.
-        |    Use 'git stash -u' to include untracked files when stashing.
-EOF
-    fi
+    if git status --no-ahead-behind --short | grep . >/dev/null 2>/dev/null ; then {
+        >&2 echo
+        >&2 echo "*** You have uncommitted, unstaged, and/or untracked changes/files."
+        >&2 echo "    Please remedy this before running 'git merge-into'."
+        >&2 echo "    Use 'git stash -u' to include untracked files when stashing."
+        FAIL
+    } ; fi
 
     local dest source
 
     dest="$1"
     source="$(git rev-parse --abbrev-ref HEAD)"
 
-    >&2 echo "+ git checkout ${dest}"
-    git checkout "${dest}" || croak $? "${source}" <<EOF
-        |
-        |*** \`git checkout ${dest}\` failed.
-EOF
+    RUN git checkout "${dest}" || {
+        >&2 echo
+        >&2 echo "*** \`git checkout ${dest}\` failed."
+        FAIL
+    }
 
-    >&2 echo "+ git pull"
-    git pull || croak $? "${source}" <<EOF
-        |
-        |*** \`git pull\` into ${dest} failed.
-EOF
+    RUN git pull || {
+        >&2 echo
+        >&2 echo "*** \`git pull\` into ${dest} failed."
+        FAIL
+    }
 
-    >&2 echo "+ git merge --no-edit ${source}"
-    git merge --no-edit "${source}" || croak $? "${source}" <<EOF
-        |
-        |*** \`git merge --no-edit ${source}\` into ${dest} failed.
-EOF
+    RUN git merge --no-edit "${source}" || {
+        >&2 echo
+        >&2 echo "*** \`git merge --no-edit ${source}\` into ${dest} failed."
+        FAIL
+    }
 
-    >&2 echo "+ git push"
-    git push || croak $? "${source}" <<EOF
-        |
-        |*** checkout and merge successful, but \`git push\` from ${dest} failed.
-EOF
+    RUN git push || {
+        >&2 echo
+        >&2 echo "*** checkout and merge successful, but \`git push\` from ${dest} failed."
+        FAIL
+    }
 
-    >&2 echo "+ git checkout ${source}"
-    git checkout "${source}" || croak $? "${source}" <<EOF
-        |
-        |*** checkout, merge, and push successful, but \`git checkout ${source}\` failed.
-EOF
+    RUN git checkout "${source}" || {
+        >&2 echo
+        >&2 echo "*** checkout, merge, and push successful, but \`git checkout ${source}\` failed."
+        FAIL
+    }
 
-    sendoff <<EOF
-        |
-        |*** ALL DONE.  :-)
-EOF
+    >&2 echo
+    >&2 echo "*** ALL DONE.  :-)"
 }
 
 ###############################################################################
