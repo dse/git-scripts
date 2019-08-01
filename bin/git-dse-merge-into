@@ -31,48 +31,48 @@ main () {
         exit 1
     fi
 
-    if git status --no-ahead-behind --short | grep . >/dev/null 2>/dev/null ; then {
+    if git status --no-ahead-behind --short | grep . >/dev/null 2>/dev/null ; then
         >&2 echo
         >&2 echo "*** You have uncommitted, unstaged, and/or untracked changes/files."
         >&2 echo "    Please remedy this before running 'git merge-into'."
         >&2 echo "    Use 'git stash -u' to include untracked files when stashing."
         FAIL
-    } ; fi
+    fi
 
     local dest source
 
     dest="$1"
     source="$(git rev-parse --abbrev-ref HEAD)"
 
-    RUN git checkout "${dest}" || {
+    if ! RUN git checkout "${dest}" ; then
         >&2 echo
         >&2 echo "*** \`git checkout ${dest}\` failed."
         FAIL
-    }
+    fi
 
-    RUN git pull || {
+    if ! RUN git pull ; then
         >&2 echo
         >&2 echo "*** \`git pull\` into ${dest} failed."
         FAIL
-    }
+    fi
 
-    RUN git merge --no-edit "${source}" || {
+    if ! RUN git merge --no-edit "${source}" ; then
         >&2 echo
         >&2 echo "*** \`git merge --no-edit ${source}\` into ${dest} failed."
         FAIL
-    }
+    fi
 
-    RUN git push || {
+    if ! RUN git push ; then
         >&2 echo
         >&2 echo "*** checkout and merge successful, but \`git push\` from ${dest} failed."
         FAIL
-    }
+    fi
 
-    RUN git checkout "${source}" || {
+    if ! RUN git checkout "${source}" ; then
         >&2 echo
         >&2 echo "*** checkout, merge, and push successful, but \`git checkout ${source}\` failed."
         FAIL
-    }
+    fi
 
     >&2 echo
     >&2 echo "*** ALL DONE.  :-)"
