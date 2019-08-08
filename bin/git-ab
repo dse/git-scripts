@@ -38,7 +38,7 @@ main () {
     local b
     local c
     local d
-    
+
     if (( $# )) ; then
         source="$1"; shift
     else
@@ -48,7 +48,7 @@ main () {
     if [[ "${source}" = "" || "${source}" = "-" ]] ; then
         source="$(git rev-parse --abbrev-ref HEAD)"
     fi
-    
+
     if (( $# )) ; then
         target="$1"; shift
     else
@@ -58,7 +58,7 @@ main () {
     if [[ "${target}" = "" || "${target}" = "-" ]] ; then
         target="$(git for-each-ref --format='%(upstream:short)' "refs/heads/${source}")"
     fi
-    
+
     if (( $# )) ; then
         target2="$1"; shift
     else
@@ -277,7 +277,7 @@ longoptions=(
 
 check_options () {
     local OPTION
-    
+
     while getlongopts 'abzhnv' OPTION "${longoptions[@]}" -- "$@" ; do
         case "${OPTION}" in
             a|ahead)
