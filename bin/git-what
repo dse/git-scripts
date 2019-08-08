@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+git status --short --show-stash --untracked-files=all --ignored=traditional --ahead-behind
