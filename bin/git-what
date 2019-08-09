@@ -1,2 +1,72 @@
 #!/usr/bin/env bash
-git status --short --show-stash --untracked-files=all --ignored=traditional --ahead-behind
+set -o errexit
+set -o pipefail
+
+# https://github.com/fboender/multi-git-status/blob/master/mgitstatus
+
+at_exit () {
+    [[ -n "$temp" ]] && rm "${temp}"
+}
+
+main () {
+    if (( $# )) ; then
+        for i ; do
+            what_"${i}"
+        done
+    else
+        what_status
+        what_ahead
+        what_stash
+        what_push
+    fi
+}
+
+what_status () {
+    git status --porcelain --untracked-files=all
+}
+
+what_ahead () {
+    source="$(
+        git rev-parse --abbrev-ref HEAD
+    )"
+    target="$(
+        git for-each-ref --format='%(upstream:short)' "refs/heads/${source}"
+    )"
+    ab="$(
+        git rev-list --left-right "${source}...${target}" --count
+    )"
+    a="${ab%$'\t'*}"
+    b="${ab#*$'\t'}"
+    if (( $a )) ; then
+        echo "** <ahead> $a ${source} ${target}"
+    fi
+}
+
+what_stash () {
+    git stash list | sed 's/^/** <stash list> /'
+}
+
+what_push () {
+    temp="$(mktemp)"
+    git remote >"${temp}"
+    if grep . "${temp}" >/dev/null ; then
+        cat "${temp}" | while read remote ; do
+            (
+                git push "${remote}" --all --dry-run --porcelain
+                git push "${remote}" --tags --dry-run --porcelain
+            ) | sed -e '/^To /d' \
+                    -e '/^Done$/d' \
+                    -e '/\[up to date\]$/d' \
+                    -e 's/'$'\t''/ /g' \
+                    -e 's@^@** <push '"${remote}"'> @'
+        done
+    else
+        echo "** <warning> no remotes"
+    fi
+}
+
+###############################################################################
+trap at_exit EXIT
+main "$@"
+
+
