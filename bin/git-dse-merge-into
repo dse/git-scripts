@@ -23,6 +23,7 @@ FAIL () {
             true
         fi
     fi
+    exit 1
 }
 
 main () {
