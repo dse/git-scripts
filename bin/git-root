@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+. "${dirname}/../share/git-scripts/git-scripts.sh"
+
+main () {
+    if (( ! $# )) ; then
+        echo "$(command git rev-parse --show-toplevel)"
+    fi
+    cd "$(command git rev-parse --show-toplevel)"
+    "$@"
+}
+
+main "$@"
