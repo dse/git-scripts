@@ -2,6 +2,9 @@
 set -o errexit
 set -o pipefail
 
+progname="$(basename "$0")"
+dirname="$(dirname "$0")"
+
 . "${dirname}/../share/git-scripts/git-scripts.sh"
 
 main () {
