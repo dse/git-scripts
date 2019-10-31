@@ -42,10 +42,7 @@ get-directories () {
         for base ; do
             dir="${prefix}${base}"
             if [[ -d "${dir}" ]] ; then
-                >&2 echo "${dir} exists"
                 dirs+=("${dir}")
-            else
-                >&2 echo "${dir} does not exist"
             fi
         done
     done
