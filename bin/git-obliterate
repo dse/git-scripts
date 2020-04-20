@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# stolen from <https://raw.githubusercontent.com/tj/git-extras/master/bin/git-obliterate>; modified.
+
+usage () { cat <<EOF }
+usage: git-obliterate <file> ... [-- <revlist> ...]
+EOF
+
+if (( $# < 1 )) ; then
+    >&2 echo "git-obliterate: no arguments"
+    exit 1
+fi
+
+if [[ "$1" = "-h" || "$1" == "--help" ]] ; then
+    usage
+    exit 0
+fi
+
+declare -a files
+declare -a ranges
+
+files=()
+ranges=()
+
+for i in "${@}" ; do
+    # use '--' to separate file list and rev-list arguments
+    if [[ "$i" == "--" ]] ; then
+	shift
+	break
+    fi
+    files+=("$i")
+    shift
+done
+
+for i in "${@}" ; do
+    ranges+=("$i")
+done
+
+if (( ! ${#files[@]} )) ; then
+    >&2 echo "git-obliterate: no file arguments"
+    exit 1
+fi
+
+if (( ${#ranges[@]} )) ; then
+    git filter-branch -f --index-filter "git rm -r --cached ${files[@]@Q} --ignore-unmatch" \
+        --prune-empty --tag-name-filter cat -- "${ranges[@]}"
+else
+    git filter-branch -f --index-filter "git rm -r --cached ${files[@]@Q} --ignore-unmatch" \
+        --prune-empty --tag-name-filter cat -- --all
+fi
