@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # stolen from <https://raw.githubusercontent.com/tj/git-extras/master/bin/git-obliterate>; modified.
+set -o xtrace
 
-usage () { cat <<EOF }
-usage: git-obliterate <file> ... [-- <revlist> ...]
+# git-obliterate '*.jpg' '*.gif' '*.png'
+#     remove images all throughout the subtree
+# git-obliterate 'privacy'
+#     remove only /privacy
+# git-obliterate '/ge/privacy/'
+#     remove only /ge/privacy/
+
+usage () { cat <<EOF; }
+usage:
+    git-obliterate <file> ... [-- <revlist> ...]
 EOF
 
 if (( $# < 1 )) ; then
@@ -31,9 +40,9 @@ for i in "${@}" ; do
     shift
 done
 
-for i in "${@}" ; do
-    ranges+=("$i")
-done
+if (( $# )) ; then
+    ranges="${@}"
+fi
 
 if (( ! ${#files[@]} )) ; then
     >&2 echo "git-obliterate: no file arguments"
@@ -41,9 +50,7 @@ if (( ! ${#files[@]} )) ; then
 fi
 
 if (( ${#ranges[@]} )) ; then
-    git filter-branch -f --index-filter "git rm -r --cached ${files[@]@Q} --ignore-unmatch" \
-        --prune-empty --tag-name-filter cat -- "${ranges[@]}"
+    git filter-branch -f --index-filter "git rm -r --ignore-unmatch --cached -- ${files[*]@Q}" --prune-empty --tag-name-filter cat -- "${ranges[@]}"
 else
-    git filter-branch -f --index-filter "git rm -r --cached ${files[@]@Q} --ignore-unmatch" \
-        --prune-empty --tag-name-filter cat -- --all
+    git filter-branch -f --index-filter "git rm -r --ignore-unmatch --cached -- ${files[*]@Q}" --prune-empty --tag-name-filter cat -- --all
 fi
