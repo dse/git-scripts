@@ -14,6 +14,8 @@ sub new {
 use lib "$ENV{HOME}/git/dse.d/git-scripts/share/git-scripts/perl";
 use My::Git::All::Spork;
 use My::Git::All::Util qw(spork);
+use My::Git::All::Term qw(isVT);
+use Term::ANSIColor qw(color);
 
 sub run {
     my ($self, @arguments) = @_;
@@ -179,7 +181,13 @@ sub stdout {
     local $_ = $line;
     s{\R\z}{};
     if ($self->{inline}) {
+        if (isVT(1)) {
+            print STDOUT color('green');
+        }
         print STDOUT $self->{inline_prefix};
+        if (isVT(1)) {
+            print STDOUT color('reset');
+        }
         print STDOUT $self->{inline_separator} if defined $self->{inline_separator};
     } elsif ($self->{indent}) {
         print STDOUT "    ";
@@ -193,7 +201,13 @@ sub stderr {
     local $_ = $line;
     s{\R\z}{};
     if ($self->{inline}) {
+        if (isVT(2)) {
+            print STDERR color('green');
+        }
         print STDERR $self->{inline_prefix};
+        if (isVT(2)) {
+            print STDERR color('reset');
+        }
         print STDERR $self->{inline_separator} if defined $self->{inline_separator};
     } elsif ($self->{indent}) {
         print STDERR "    ";
@@ -224,7 +238,14 @@ sub run_git_command_in {
     }
     my $dir_header = $self->{basename} ? basename($dir) : $dir;
     if (!$self->{inline} && !$self->{errors_only}) {
-        printf($format . "\n", $dir_header);
+        if (isVT) {
+            print color('green');
+        }
+        printf($format, $dir_header);
+        if (isVT) {
+            print color('reset');
+        }
+        print("\n");
     }
     my $inline_prefix = $self->{inline} && sprintf($format, $dir_header);
     if (defined $self->{format_width}) {
@@ -328,7 +349,13 @@ sub run_git_command_in {
             if (!$self->{no_progress}) {
                 # show each project while git <cmd> is doing its work
                 # on it.
+                if (isVT) {
+                    print(color('green'));
+                }
                 printf($format, $dir_header);
+                if (isVT) {
+                    print(color('reset'));
+                }
             }
         }
 
@@ -382,7 +409,13 @@ sub run_git_command_in {
             my ($pid, $status, $exit, $signal, $coredump, $data) = @_;
             if (-t 1) {
                 if ($self->{no_progress}) {
+                    if (isVT) {
+                        print(color('green'));
+                    }
                     printf($format, $dir_header);
+                    if (isVT) {
+                        print(color('reset'));
+                    }
                 }
                 if ($status) {
                     if (!$self->{inline}) {
@@ -398,7 +431,14 @@ sub run_git_command_in {
                 }
             } else {
                 if ($status) {
-                    printf($format . "\n", $dir_header);
+                    if (isVT) {
+                        print(color('green'));
+                    }
+                    printf($format, $dir_header);
+                    if (isVT) {
+                        print(color('reset'));
+                    }
+                    print("\n");
                 }
             }
             $wait->($pid, $status, $exit, $signal, $coredump, $data);

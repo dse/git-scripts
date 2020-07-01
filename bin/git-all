@@ -30,9 +30,13 @@ our $separator;
 our $verbose;
 our $dryRun;
 our $errorsOnly;
+our $commentHeader;
+our $noHeader;
 
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
+    "comment|comment-header"  => \$commentHeader,
+    "no-header"               => \$noHeader,
     "max-depth|maxdepth=i"    => \$maxDepth,
     "no-git"                  => \$noGit,
     "basename|print-basename" => \$printBasename,
@@ -41,7 +45,7 @@ Getopt::Long::GetOptions(
     "indent"                  => \$indent,
     "no-pty"                  => \$noPty,
     "format=s"                => \$format,
-    "format-width=i"          => \$formatWidth,
+    "width|format-width=i"    => \$formatWidth,
     "separator=s"             => \$separator,
     "v|verbose+"              => \$verbose,
     "n|dry-run"               => \$dryRun,
@@ -82,6 +86,8 @@ END
 
 $ENV{GIT_PAGER} = "cat";
 my $all = My::Git::Porcelain::All->new();
+$all->commentHeader($commentHeader) if defined $commentHeader;
+$all->noHeader($noHeader)           if defined $noHeader;
 $all->maxDepth($maxDepth)           if defined $maxDepth;
 $all->noGit($noGit)                 if defined $noGit;
 $all->printBasename($printBasename) if defined $printBasename;
@@ -101,6 +107,8 @@ package My::Git::Porcelain::All {
     use Moo;
 
     BEGIN {
+        has commentHeader   => (is => 'rw');
+        has noHeader        => (is => 'rw');
         has maxDepth        => (is => 'rw');
         has noGit           => (is => 'rw');
         has printBasename   => (is => 'rw');
@@ -283,7 +291,9 @@ package My::Git::Porcelain::All {
         local $_ = $line;
         s{\R\z}{};
         if ($self->inline) {
+            print STDOUT color('green') if isVT(1);
             print STDOUT $self->inlinePrefix;
+            print STDOUT color('reset') if isVT(1);
             print STDOUT $self->inlineSeparator if defined $self->inlineSeparator;
         } elsif ($self->indent) {
             print STDOUT "    ";
@@ -297,7 +307,9 @@ package My::Git::Porcelain::All {
         local $_ = $line;
         s{\R\z}{};
         if ($self->inline) {
+            print STDERR color('green') if isVT(2);
             print STDERR $self->inlinePrefix;
+            print STDERR color('reset') if isVT(2);
             print STDERR $self->inlineSeparator if defined $self->inlineSeparator;
         } elsif ($self->indent) {
             print STDERR "    ";
@@ -305,6 +317,9 @@ package My::Git::Porcelain::All {
         print STDERR "$_\n";
         STDERR->flush();
     }
+
+    use My::Git::All::Term qw(isVT);
+    use Term::ANSIColor qw(color);
 
     sub runGitCommandIn {
         my ($self, %args) = @_;
@@ -321,18 +336,47 @@ package My::Git::Porcelain::All {
 
         my $format = $self->format;
         if (!defined $format) {
-            $format = $self->noBrackets ? "%s" : "[%s]";
-            if ($self->inline) {
-                $format .= $self->noBrackets ? ":" : " ";
+            if ($self->noHeader) {
+                $format = undef;
+            } else {
+                if ($self->noBrackets) {
+                    if ($self->inline) {
+                        $format = '%s:';
+                    } else {
+                        $format = '%s';
+                    }
+                } elsif ($self->commentHeader) {
+                    if ($self->inline) {
+                        $format = '# %s:';
+                    } else {
+                        $format = '# %s';
+                    }
+                } else {
+                    if ($self->inline) {
+                        $format = '[%s] ';
+                    } else {
+                        $format = '[%s]';
+                    }
+                }
             }
         }
         my $dirHeader = $self->printBasename ? basename($dir) : $dir;
         if (!$self->inline && !$self->errorsOnly) {
-            printf($format . "\n", $dirHeader);
+            if (defined $format) {
+                print(color('green')) if isVT();
+                printf($format, $dirHeader);
+                print(color('reset')) if isVT();
+                print("\n");
+            }
         }
-        my $inlinePrefix = $self->inline && sprintf($format, $dirHeader);
-        if (defined $self->formatWidth) {
-            $inlinePrefix = sprintf("%-*s", $self->formatWidth, $inlinePrefix);
+        my $inlinePrefix;
+        if (defined $format) {
+            $inlinePrefix = $self->inline && sprintf($format, $dirHeader);
+            if (defined $self->formatWidth) {
+                $inlinePrefix = sprintf("%-*s", $self->formatWidth, $inlinePrefix);
+            }
+        } else {
+            $inlinePrefix = '';
         }
         my $inlineSeparator = defined $self->separator ? String::Unescape->unescape($self->separator) : undef;
         my $usePipesAndSuch = $self->indent || $self->inline || $self->errorsOnly;
