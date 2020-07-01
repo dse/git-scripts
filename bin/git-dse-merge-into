@@ -42,6 +42,46 @@ main () {
 
     local dest source
 
+    local opt_no_ff=''
+
+    while getopts 'h-:' OPTION ; do
+        if [[ "${OPTION}" = "-" ]] ; then
+            if [[ "${OPTARG}" == "" ]] ; then
+                # argument is '--' by itself; terminate option parsing
+                break
+            fi
+            OPTION="${OPTARG}"
+            unset OPTARG
+            case "${OPTION}" in
+                *=*)
+                    OPTARG="${OPTION#*=}"
+                    OPTION="${OPTION%%=*}"
+                    ;;
+            esac
+        fi
+        case "${OPTION}" in
+            h|help)
+                usage
+                exit 0
+                ;;
+            no-ff)
+                opt_no_ff='--no-ff'
+                ;;
+            '?')
+                # short option invalid or missing argument
+                >&2 echo "Type '<progname> --help' for more information."
+                exit 1
+                ;;
+            *)
+                # invalid long option
+                >&2 echo "<progname>: unknown option -- ${OPTION}"
+                >&2 echo "Type '<progname> --help' for more information."
+                exit 1
+                ;;
+        esac
+    done
+    shift $(( OPTIND - 1 ))
+
     dest="$1"
     source="$(git rev-parse --abbrev-ref HEAD)"
 
@@ -57,9 +97,9 @@ main () {
         FAIL
     fi
 
-    if ! RUN git merge --no-edit "${source}" ; then
+    if ! RUN git merge $opt_no_ff --no-edit "${source}" ; then
         >&2 echo
-        >&2 echo "*** \`git merge --no-edit ${source}\` into ${dest} failed."
+        >&2 echo "*** \`git merge $opt_no_ff --no-edit ${source}\` into ${dest} failed."
         FAIL
     fi
 

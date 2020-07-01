@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+temp="$(mktemp)"
+temp2="$(mktemp)"
+
+declare -a files
+
+git rev-list HEAD | while read revision ; do
+    git show --name-status --oneline "${revision}" >"${temp}"
+    awk 'NR == 1' "${temp}"
+    awk 'NR >= 2' "${temp}" | sed -r 's/[A-Z]\t//' >"${temp2}"
+    mapfile -t files <"${temp2}"
+    if (( ${#files[@]} )) ; then
+        git ls-tree -l "${revision}" "${files[@]}" | sed 's/^/    /'
+    fi
+done
+
+rm "${temp}"
+rm "${temp2}"

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# stolen from <https://raw.githubusercontent.com/tj/git-extras/master/bin/git-obliterate>; modified.
+set -o xtrace
+
+# git-obliterate '*.jpg' '*.gif' '*.png'
+#     remove images all throughout the subtree
+# git-obliterate 'privacy'
+#     remove only /privacy
+# git-obliterate '/ge/privacy/'
+#     remove only /ge/privacy/
+
+usage () { cat <<EOF; }
+usage:
+    git-obliterate <file> ... [-- <revlist> ...]
+EOF
+
+if (( $# < 1 )) ; then
+    >&2 echo "git-obliterate: no arguments"
+    exit 1
+fi
+
+if [[ "$1" = "-h" || "$1" == "--help" ]] ; then
+    usage
+    exit 0
+fi
+
+declare -a files
+declare -a ranges
+
+files=()
+ranges=()
+
+for i in "${@}" ; do
+    # use '--' to separate file list and rev-list arguments
+    if [[ "$i" == "--" ]] ; then
+	shift
+	break
+    fi
+    files+=("$i")
+    shift
+done
+
+if (( $# )) ; then
+    ranges="${@}"
+fi
+
+if (( ! ${#files[@]} )) ; then
+    >&2 echo "git-obliterate: no file arguments"
+    exit 1
+fi
+
+if (( ${#ranges[@]} )) ; then
+    git filter-branch -f --index-filter "git rm -r --ignore-unmatch --cached -- ${files[*]@Q}" --prune-empty --tag-name-filter cat -- "${ranges[@]}"
+else
+    git filter-branch -f --index-filter "git rm -r --ignore-unmatch --cached -- ${files[*]@Q}" --prune-empty --tag-name-filter cat -- --all
+fi
