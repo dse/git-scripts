@@ -2,6 +2,8 @@
 set -o errexit
 set -o pipefail
 
+# TODO/FIXME: when failing, list remaining steps.
+
 progname="$(basename "$0")"
 dirname="$(dirname "$0")"
 
@@ -32,17 +34,10 @@ main () {
         exit 1
     fi
 
-    if git status --no-ahead-behind --short | grep . >/dev/null 2>/dev/null ; then
-        >&2 echo
-        >&2 echo "*** You have uncommitted, unstaged, and/or untracked changes/files."
-        >&2 echo "    Please remedy this before running 'git merge-into'."
-        >&2 echo "    Use 'git stash -u' to include untracked files when stashing."
-        FAIL
-    fi
-
     local dest source
 
     local opt_no_ff=''
+    local opt_ignore_changes=0
 
     while getopts 'h-:' OPTION ; do
         if [[ "${OPTION}" = "-" ]] ; then
@@ -67,6 +62,9 @@ main () {
             no-ff)
                 opt_no_ff='--no-ff'
                 ;;
+            ignore-changes)
+                opt_ignore_changes=1
+                ;;
             '?')
                 # short option invalid or missing argument
                 >&2 echo "Type '<progname> --help' for more information."
@@ -81,6 +79,16 @@ main () {
         esac
     done
     shift $(( OPTIND - 1 ))
+
+    if ((!opt_ignore_changes)) ; then
+        if git status --no-ahead-behind --short | grep . >/dev/null 2>/dev/null ; then
+            >&2 echo
+            >&2 echo "*** You have uncommitted, unstaged, and/or untracked changes/files."
+            >&2 echo "    Please remedy this before running 'git merge-into'."
+            >&2 echo "    Use 'git stash -u' to include untracked files when stashing."
+            FAIL
+        fi
+    fi
 
     dest="$1"
     source="$(git rev-parse --abbrev-ref HEAD)"
