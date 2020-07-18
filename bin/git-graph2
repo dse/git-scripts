@@ -21,20 +21,21 @@ package My::Git::Graph2 {
     INIT {
         has commitLog              => (is => 'rw', default => sub { return []; });
         has commit                 => (is => 'rw');
-        has prevCommit             => (is => 'rw');
         has parents                => (is => 'rw', default => sub { return []; });
-        has prevParents            => (is => 'rw', default => sub { return []; });
         has columns                => (is => 'rw', default => sub { return []; });
-        has prevColumns            => (is => 'rw', default => sub { return []; });
         has commitColumnNumber     => (is => 'rw');
-        has prevCommitColumnNumber => (is => 'rw');
         has columnNumbers          => (is => 'rw', default => sub { return {}; });
-        has prevColumnNumbers      => (is => 'rw', default => sub { return {}; });
+        has hasKtulu               => (is => 'rw', default => 0);
+
+        # options
         has oneLine                => (is => 'rw', default => 1);
         has topoOrder              => (is => 'rw', default => 1);
         has ascii                  => (is => 'rw', default => 0);
         has showParents            => (is => 'rw', default => 0);
         has abbrev                 => (is => 'rw', default => 1);
+        has padding                => (is => 'rw', default => 32);
+
+        has style => (is => 'rw', default => 1);
     }
 
     sub run {
@@ -111,12 +112,6 @@ package My::Git::Graph2 {
     sub startNextCommit {
         my ($self, $line, $commit, @parents) = @_;
 
-        $self->prevCommit($self->commit);
-        $self->prevParents(dclone($self->{parents}));
-        $self->prevCommitColumnNumber($self->commitColumnNumber);
-        $self->prevColumns(dclone($self->{columns}));
-        $self->prevColumnNumbers(dclone($self->{columnNumbers}));
-
         if (defined $self->commit) {
             $self->printCommit();
         }
@@ -124,6 +119,7 @@ package My::Git::Graph2 {
         $self->commitLog([$line]);
         $self->commit($commit);
         $self->parents(\@parents);
+        $self->hasKtulu(0);
     }
 
     sub computeColumns {
@@ -170,6 +166,9 @@ package My::Git::Graph2 {
         } else {
             $commitColumn->{parent} = $parent;
             $commitColumn->{parentNumber} = $parentColumnNumber;
+            if ($commitColumn->{number} != $commitColumn->{parentNumber}) {
+                $self->hasKtulu(1);
+            }
         }
 
         foreach my $otherParent (@{$self->parents}) {
@@ -184,6 +183,7 @@ package My::Git::Graph2 {
                     new => 1,
                 };
                 push(@{$self->columns}, $column);
+                $self->hasKtulu(1);
             }
         }
 
@@ -206,6 +206,7 @@ package My::Git::Graph2 {
                 $result .= '  ';
             }
         }
+        $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
 
@@ -223,6 +224,7 @@ package My::Git::Graph2 {
                 $result .= '  ';
             }
         }
+        $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
 
@@ -281,6 +283,7 @@ package My::Git::Graph2 {
             }
         }
         $result .= " ";
+        $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
 
@@ -288,10 +291,12 @@ package My::Git::Graph2 {
         my ($self) = @_;
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
-            my $number = $column->{number};
-            my $parentNumber = $column->{parentNumber};
-            if (!defined $parentNumber || $number != $parentNumber) {
-                $self->columns->[$i] = undef;
+            if (defined $column) {
+                my $number = $column->{number};
+                my $parentNumber = $column->{parentNumber};
+                if (!defined $parentNumber || $number != $parentNumber) {
+                    $self->columns->[$i] = undef;
+                }
             }
         }
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
@@ -324,7 +329,9 @@ package My::Git::Graph2 {
             }
         }
 
-        print($ktulu . "\n");
+        if ($self->hasKtulu) {
+            print($ktulu . "\n");
+        }
 
         $self->cleanupColumns();
     }
