@@ -1,0 +1,332 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use v5.10.0;
+use utf8;
+
+use open ':locale';
+
+select(STDOUT); $| = 1;
+select(STDERR); $| = 1;
+
+my $g2 = My::Git::Graph2->new();
+$g2->run(@ARGV);
+
+package My::Git::Graph2 {
+    use Text::Tabs qw(expand);
+    use Data::Dumper qw(Dumper);
+    use Storable qw(dclone);
+    use Moo;
+
+    INIT {
+        has commitLog              => (is => 'rw', default => sub { return []; });
+        has commit                 => (is => 'rw');
+        has prevCommit             => (is => 'rw');
+        has parents                => (is => 'rw', default => sub { return []; });
+        has prevParents            => (is => 'rw', default => sub { return []; });
+        has columns                => (is => 'rw', default => sub { return []; });
+        has prevColumns            => (is => 'rw', default => sub { return []; });
+        has commitColumnNumber     => (is => 'rw');
+        has prevCommitColumnNumber => (is => 'rw');
+        has columnNumbers          => (is => 'rw', default => sub { return {}; });
+        has prevColumnNumbers      => (is => 'rw', default => sub { return {}; });
+        has oneLine                => (is => 'rw', default => 1);
+        has topoOrder              => (is => 'rw', default => 1);
+        has ascii                  => (is => 'rw', default => 0);
+        has showParents            => (is => 'rw', default => 0);
+        has abbrev                 => (is => 'rw', default => 1);
+    }
+
+    sub run {
+        my ($self, @args) = @_;
+        $self->initialize();
+        my $ph;
+        if (!open($ph, '-|', 'git', 'log', '--parents',
+                  '--all',
+                  '--decorate',
+                  ($self->oneLine ? ('--oneline') : ()),
+                  ($self->topoOrder ? ('--topo-order') : ()),
+                  @args)) {
+            warn("failed to open pipe to git: $!\n");
+            return;
+        }
+        local $_ = undef; # $ARG (the default input and pattern-matching space)
+        local $/ = "\n";  # $INPUT_RECORD_SEPARATOR
+        my @commit;
+        while (<$ph>) {
+            my $origLine = $_;
+            s{\R\z}{};
+            $_ = expand($_);    # tabs lol
+            my $line = $_;
+            $self->parseLine($line);
+        }
+        $self->eof();
+    }
+
+    sub initialize {
+        my ($self) = @_;
+    }
+
+    sub parseLine {
+        my ($self, $line) = @_;
+        my $origLine = $line;
+
+        my $commit;
+        if ($self->oneLine) {
+            if ($line !~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
+                push(@{$self->commitLog}, $origLine);
+                return;
+            }
+            $commit = $1;
+        } else {
+            if ($line !~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
+                push(@{$self->commitLog}, $origLine);
+                return;
+            }
+            $commit = $1;
+        }
+
+        my $newLine = '';
+        $newLine .= substr($commit, 0, 8) . ' ' if $self->abbrev;
+        $newLine .= $commit               . ' ' if !$self->abbrev;
+        my @parents;
+        while ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
+            my $parent = $1;
+            if ($self->showParents) {
+                $newLine .= substr($parent, 0, 8) . ' ' if $self->abbrev;
+                $newLine .= $parent               . ' ' if !$self->abbrev;
+            }
+            push(@parents, $parent);
+        }
+        $self->startNextCommit($newLine . $line, $commit, @parents);
+    }
+
+    sub eof {
+        my ($self) = @_;
+        if (defined $self->commit) {
+            $self->printCommit();
+        }
+    }
+
+    sub startNextCommit {
+        my ($self, $line, $commit, @parents) = @_;
+
+        $self->prevCommit($self->commit);
+        $self->prevParents(dclone($self->{parents}));
+        $self->prevCommitColumnNumber($self->commitColumnNumber);
+        $self->prevColumns(dclone($self->{columns}));
+        $self->prevColumnNumbers(dclone($self->{columnNumbers}));
+
+        if (defined $self->commit) {
+            $self->printCommit();
+        }
+
+        $self->commitLog([$line]);
+        $self->commit($commit);
+        $self->parents(\@parents);
+    }
+
+    sub computeColumns {
+        my ($self) = @_;
+
+        my $commit = $self->commit; # always defined
+        my $parent = $self->parents->[0];
+
+        my $commitColumnNumber = $self->columnNumbers->{$commit};
+        my $parentColumnNumber = defined $parent ? $self->columnNumbers->{$parent} : undef;
+        my $commitColumn       = defined $commitColumnNumber ? $self->columns->[$commitColumnNumber] : undef;
+        my $parentColumn       = defined $parentColumnNumber ? $self->columns->[$parentColumnNumber] : undef;
+
+        if (!defined $commitColumnNumber && !defined $parentColumnNumber) {
+            $commitColumnNumber = scalar @{$self->columns};
+            $parentColumnNumber = scalar @{$self->columns} if defined $parent;
+            $self->columnNumbers->{$commit} = $commitColumnNumber;
+            $self->columnNumbers->{$parent} = $parentColumnNumber if defined $parentColumnNumber;
+            $commitColumn = {
+                number => $commitColumnNumber,
+                commit => $parent,
+                parentNumber => $parentColumnNumber,
+            };
+            $parentColumn = $commitColumn if defined $parent;
+            push(@{$self->columns}, $commitColumn);
+        } elsif (!defined $parentColumnNumber) {
+            $commitColumn->{commit} = $parent;
+            if (defined $parent) {
+                $parentColumnNumber = $commitColumnNumber;
+                $self->columnNumbers->{$parent} = $parentColumnNumber;
+                $parentColumn = $commitColumn;
+                $commitColumn->{commit} = $parent;
+                $commitColumn->{parentNumber} = $parentColumnNumber;
+            }
+        } elsif (!defined $commitColumnNumber) {
+            $commitColumnNumber = scalar @{$self->columns};
+            $self->columnNumbers->{$commit} = $commitColumnNumber;
+            $commitColumn = {
+                number => $commitColumnNumber,
+                commit => $parent,
+                parentNumber => $parentColumnNumber,
+            };
+            push(@{$self->columns}, $commitColumn);
+        } else {
+            $commitColumn->{parent} = $parent;
+            $commitColumn->{parentNumber} = $parentColumnNumber;
+        }
+
+        foreach my $otherParent (@{$self->parents}) {
+            my $columnNumber = $self->columnNumbers->{$otherParent};
+            if (!defined $columnNumber) {
+                $columnNumber = scalar @{$self->columns};
+                $self->columnNumbers->{$otherParent} = $columnNumber;
+                my $column = {
+                    number => $columnNumber,
+                    commit => $parent,
+                    parentNumber => $columnNumber,
+                    new => 1,
+                };
+                push(@{$self->columns}, $column);
+            }
+        }
+
+        $self->commitColumnNumber($commitColumnNumber);
+    }
+
+    sub computeGraphLine {
+        my ($self) = @_;
+        my $result = '';
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (!defined $column) {
+                $result .= '  ';
+            } elsif ($i == $self->commitColumnNumber) {
+                $result .= '* ';
+            } elsif (defined $column->{commit} && !$column->{new}) {
+                $result .= '| ' if $self->ascii;
+                $result .= '│ ' if !$self->ascii;
+            } else {
+                $result .= '  ';
+            }
+        }
+        return $result;
+    }
+
+    sub computePostGraphLine {
+        my ($self) = @_;
+        my $result = '';
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (!defined $column) {
+                $result .= '  ';
+            } elsif (defined $column->{commit} && !$column->{new}) {
+                $result .= '| ' if $self->ascii;
+                $result .= '│ ' if !$self->ascii;
+            } else {
+                $result .= '  ';
+            }
+        }
+        return $result;
+    }
+
+    use List::Util qw(min max);
+
+    sub computeKtuluLine {
+        my ($self) = @_;
+        my $result = "";
+        my @p = grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
+        my $minp = min(@p);
+        my $maxp = max(@p);
+        my %p = map { ($_ => 1) } @p;
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if ($i < $self->commitColumnNumber) {
+                my $hbar = $i >= $minp;
+                if (!defined $column) {
+                    $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
+                } elsif ($p{$i}) {
+                    $result .= ($self->ascii ? ".-" : "╭─");
+                } elsif (defined $column->{commit}) {
+                    $result .= $hbar ? '|-' : '| ' if $self->ascii;
+                    $result .= $hbar ? '┼─' : '│ ' if !$self->ascii;
+                } else {
+                    $result .= "  ";
+                }
+            } elsif ($i == $self->commitColumnNumber) {
+                if ($i != $column->{parentNumber}) {
+                    if ($i < $column->{parentNumber}) {
+                        $result .= $self->ascii ? "'" : "╰";
+                    } else {
+                        $result .= $self->ascii ? "'" : "╯";
+                    }
+                } elsif (scalar(@p) && ($minp < $i || $i < $maxp)) {
+                    my $left = $minp < $i;
+                    my $right = $maxp > $i;
+                    $result .= "'" if $self->ascii;
+                    $result .= "╯" if !$self->ascii && $left && !$right;
+                    $result .= "╰" if !$self->ascii && !$left && $right;
+                    $result .= "┴" if !$self->ascii && $left && $right;
+                } else {
+                    $result .= ($self->ascii ? "|" : "│");
+                }
+            } else {
+                my $hbar = $i <= $maxp;
+                if (!defined $column) {
+                    $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
+                } elsif ($p{$i}) {
+                    $result .= ($self->ascii ? "-." : "─╮");
+                } elsif (defined $column->{commit}) {
+                    $result .= $hbar ? '-|' : ' |' if $self->ascii;
+                    $result .= $hbar ? '─┼' : ' │' if !$self->ascii;
+                } else {
+                    $result .= "  ";
+                }
+            }
+        }
+        $result .= " ";
+        return $result;
+    }
+
+    sub cleanupColumns {
+        my ($self) = @_;
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            my $number = $column->{number};
+            my $parentNumber = $column->{parentNumber};
+            if (!defined $parentNumber || $number != $parentNumber) {
+                $self->columns->[$i] = undef;
+            }
+        }
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (defined $column) {
+                $column->{new} = 0;
+            }
+        }
+        while (scalar @{$self->columns} && !defined $self->columns->[-1]) {
+            pop(@{$self->columns});
+        }
+    }
+
+    sub printCommit {
+        my ($self) = @_;
+
+        $self->computeColumns();
+
+        my $graph = $self->computeGraphLine();
+        my $post  = $self->computePostGraphLine();
+        my $ktulu = $self->computeKtuluLine();
+
+        my $first = 1;
+        foreach my $log (@{$self->commitLog}) {
+            if ($first) {
+                print($graph . $log . "\n");
+                $first = 0;
+            } else {
+                print($post . $log . "\n");
+            }
+        }
+
+        print($ktulu . "\n");
+
+        $self->cleanupColumns();
+    }
+
+};
