@@ -18,6 +18,22 @@ package My::Git::Graph2 {
     use Storable qw(dclone);
     use Moo;
 
+    use constant BLACK_CIRCLE_FOR_RECORD   => '⏺'; # U+23FA
+    use constant BULLET                    => '•'; # U+2022
+    use constant END_OF_PROOF              => '∎'; # U+220E
+    use constant BLACK_SQUARE_FOR_STOP     => '⏹'; # U+23F9
+    use constant BLACK_SQUARE              => '■'; # U+25A0
+    use constant BLACK_DIAMOND             => '◆'; # U+25C6
+    use constant BLACK_CIRCLE              => '●'; # U+25CF
+    use constant BLACK_MEDIUM_SQUARE       => '◼'; # U+25FC
+    use constant BLACK_MEDIUM_SMALL_SQUARE => '◾'; # U+25FE
+    use constant MEDIUM_BLACK_CIRCLE       => '⚫'; # U+26AB
+    use constant BLACK_LARGE_SQUARE        => '⬛'; # U+2B1B
+    use constant BLACK_LARGE_CIRCLE        => '⬤'; # U+2B24
+
+    use constant THIS_COMMIT               => BLACK_SQUARE;
+    use constant THIS_COMMIT_ASCII         => '*';
+
     INIT {
         has commitLog              => (is => 'rw', default => sub { return []; });
         has commit                 => (is => 'rw');
@@ -35,7 +51,7 @@ package My::Git::Graph2 {
         has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
 
-        has style => (is => 'rw', default => 1);
+        has style                  => (is => 'rw', default => 1);
     }
 
     sub run {
@@ -195,10 +211,12 @@ package My::Git::Graph2 {
         my $result = '';
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
-            if (!defined $column) {
+            if (!defined $column || $column->{closing}) {
                 $result .= '  ';
             } elsif ($i == $self->commitColumnNumber) {
-                $result .= '* ';
+                $result .= THIS_COMMIT       if !$self->ascii;
+                $result .= THIS_COMMIT_ASCII if $self->ascii;
+                $result .= ' ';
             } elsif (defined $column->{commit} && !$column->{new}) {
                 $result .= '| ' if $self->ascii;
                 $result .= '│ ' if !$self->ascii;
@@ -215,7 +233,7 @@ package My::Git::Graph2 {
         my $result = '';
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
-            if (!defined $column) {
+            if (!defined $column || $column->{closing}) {
                 $result .= '  ';
             } elsif (defined $column->{commit} && !$column->{new}) {
                 $result .= '| ' if $self->ascii;
@@ -240,8 +258,8 @@ package My::Git::Graph2 {
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
             if ($i < $self->commitColumnNumber) {
-                my $hbar = $i >= $minp;
-                if (!defined $column) {
+                my $hbar = defined $minp && $i >= $minp;
+                if (!defined $column || $column->{closing}) {
                     $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
                 } elsif ($p{$i}) {
                     $result .= ($self->ascii ? ".-" : "╭─");
@@ -269,8 +287,8 @@ package My::Git::Graph2 {
                     $result .= ($self->ascii ? "|" : "│");
                 }
             } else {
-                my $hbar = $i <= $maxp;
-                if (!defined $column) {
+                my $hbar = defined $maxp && $i <= $maxp;
+                if (!defined $column || $column->{closing}) {
                     $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
                 } elsif ($p{$i}) {
                     $result .= ($self->ascii ? "-." : "─╮");
@@ -292,10 +310,19 @@ package My::Git::Graph2 {
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
             if (defined $column) {
+                if ($column->{closing}) {
+                    $self->columns->[$i] = undef;
+                }
+            }
+        }
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (defined $column) {
                 my $number = $column->{number};
                 my $parentNumber = $column->{parentNumber};
                 if (!defined $parentNumber || $number != $parentNumber) {
-                    $self->columns->[$i] = undef;
+                    # $self->columns->[$i] = undef;
+                    $self->columns->[$i]->{closing} = 1;
                 }
             }
         }
@@ -310,28 +337,87 @@ package My::Git::Graph2 {
         }
     }
 
+    sub computeGraphLine2 {
+        my ($self) = @_;
+        my $result = "";
+        my @p = grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
+        my $minp = min(@p);
+        my $maxp = max(@p);
+        my %p = map { ($_ => 1) } @p;
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if ($i < $self->commitColumnNumber) {
+                my $hbar = defined $minp && $i >= $minp;
+                if (!defined $column || $column->{closing}) {
+                    $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
+                } elsif ($p{$i}) {
+                    $result .= ($self->ascii ? ".-" : "╭─");
+                } elsif (defined $column->{commit}) {
+                    $result .= $hbar ? '|-' : '| ' if $self->ascii;
+                    $result .= $hbar ? '┼─' : '│ ' if !$self->ascii;
+                } else {
+                    $result .= "  ";
+                }
+            } elsif ($i == $self->commitColumnNumber) {
+                $result .= THIS_COMMIT       if !$self->ascii;
+                $result .= THIS_COMMIT_ASCII if $self->ascii;
+            } else {
+                my $hbar = defined $maxp && $i <= $maxp;
+                if (!defined $column || $column->{closing}) {
+                    $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
+                } elsif ($p{$i}) {
+                    $result .= ($self->ascii ? "-." : "─╮");
+                } elsif (defined $column->{commit}) {
+                    $result .= $hbar ? '-|' : ' |' if $self->ascii;
+                    $result .= $hbar ? '─┼' : ' │' if !$self->ascii;
+                } else {
+                    $result .= "  ";
+                }
+            }
+        }
+        $result .= " ";
+        $result = sprintf('%-*s', $self->padding, $result);
+        return $result;
+    }
+
     sub printCommit {
         my ($self) = @_;
 
         $self->computeColumns();
 
-        my $graph = $self->computeGraphLine();
-        my $post  = $self->computePostGraphLine();
-        my $ktulu = $self->computeKtuluLine();
+        if ($self->style == 1) {
+            my $graph = $self->computeGraphLine();
+            my $post  = $self->computePostGraphLine();
+            my $ktulu = $self->computeKtuluLine();
 
-        my $first = 1;
-        foreach my $log (@{$self->commitLog}) {
-            if ($first) {
-                print($graph . $log . "\n");
-                $first = 0;
-            } else {
-                print($post . $log . "\n");
+            my $first = 1;
+            foreach my $log (@{$self->commitLog}) {
+                if ($first) {
+                    print($graph . $log . "\n");
+                    $first = 0;
+                } else {
+                    print($post . $log . "\n");
+                }
+            }
+
+            if ($self->hasKtulu) {
+                print($ktulu . "\n");
+            }
+        } else {
+            my $graph = $self->computeGraphLine2();
+            my $post  = $self->computePostGraphLine();
+
+            my $first = 1;
+            foreach my $log (@{$self->commitLog}) {
+                if ($first) {
+                    print($graph . $log . "\n");
+                    $first = 0;
+                } else {
+                    print($post . $log . "\n");
+                }
             }
         }
 
-        if ($self->hasKtulu) {
-            print($ktulu . "\n");
-        }
 
         $self->cleanupColumns();
     }
