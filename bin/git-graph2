@@ -51,7 +51,7 @@ package My::Git::Graph2 {
         has showParents            => (is => 'rw', default => 0);
         has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
-        has stdin                  => (is => 'rw', default => 0);
+        has stdin                  => (is => 'rw', default => 1);
 
         has style                  => (is => 'rw', default => 1);
     }
@@ -59,9 +59,16 @@ package My::Git::Graph2 {
     sub run {
         my ($self, @args) = @_;
         if ($self->stdin) {
+            $self->runStdin(@args);
         } else {
-            $self->runGit();
+            $self->runGit(@args);
         }
+    }
+
+    sub runStdin {
+        my ($self, @args) = @_;
+        $self->initialize();
+        $self->runFileHandle(\*STDIN);
     }
 
     sub runGit {
@@ -77,10 +84,15 @@ package My::Git::Graph2 {
             warn("failed to open pipe to git: $!\n");
             return;
         }
+        $self->runFileHandle($ph);
+    }
+
+    sub runFileHandle {
+        my ($self, $fh) = @_;
         local $_ = undef; # $ARG (the default input and pattern-matching space)
         local $/ = "\n";  # $INPUT_RECORD_SEPARATOR
         my @commit;
-        while (<$ph>) {
+        while (<$fh>) {
             my $origLine = $_;
             s{\R\z}{};
             $_ = expand($_);    # tabs lol
@@ -99,18 +111,14 @@ package My::Git::Graph2 {
         my $origLine = $line;
 
         my $commit;
-        if ($self->oneLine) {
-            if ($line !~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
-                push(@{$self->commitLog}, $origLine);
-                return;
-            }
+
+        if ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
+            $commit = $1;
+        } elsif ($line =~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
             $commit = $1;
         } else {
-            if ($line !~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
-                push(@{$self->commitLog}, $origLine);
-                return;
-            }
-            $commit = $1;
+            push(@{$self->commitLog}, $origLine);
+            return;
         }
 
         my $newLine = '';
