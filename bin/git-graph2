@@ -8,6 +8,7 @@ use open ':locale';
 
 select(STDOUT); $| = 1;
 select(STDERR); $| = 1;
+select(STDOUT);
 
 my $g2 = My::Git::Graph2->new();
 $g2->run(@ARGV);
