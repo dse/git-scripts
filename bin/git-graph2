@@ -52,6 +52,7 @@ package My::Git::Graph2 {
         has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
         has stdin                  => (is => 'rw', default => 1);
+        has breathingRoom          => (is => 'rw', default => 0);
 
         has style                  => (is => 'rw', default => 1);
     }
@@ -339,8 +340,11 @@ package My::Git::Graph2 {
                 my $number = $column->{number};
                 my $parentNumber = $column->{parentNumber};
                 if (!defined $parentNumber || $number != $parentNumber) {
-                    # $self->columns->[$i] = undef;
-                    $self->columns->[$i]->{closing} = 1;
+                    if ($self->breathingRoom) {
+                        $self->columns->[$i]->{closing} = 1;
+                    } else {
+                        $self->columns->[$i] = undef;
+                    }
                 }
             }
         }
