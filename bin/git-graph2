@@ -69,7 +69,7 @@ package My::Git::Graph2 {
     sub runStdin {
         my ($self, @args) = @_;
         $self->initialize();
-        $self->runFileHandle(\*STDIN);
+        $self->runFileHandle(\*ARGV);
     }
 
     sub runGit {
