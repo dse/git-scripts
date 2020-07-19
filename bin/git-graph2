@@ -51,11 +51,20 @@ package My::Git::Graph2 {
         has showParents            => (is => 'rw', default => 0);
         has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
+        has stdin                  => (is => 'rw', default => 0);
 
         has style                  => (is => 'rw', default => 1);
     }
 
     sub run {
+        my ($self, @args) = @_;
+        if ($self->stdin) {
+        } else {
+            $self->runGit();
+        }
+    }
+
+    sub runGit {
         my ($self, @args) = @_;
         $self->initialize();
         my $ph;
