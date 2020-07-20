@@ -6,12 +6,45 @@ use utf8;
 
 use open ':locale';
 
+use Getopt::Long;
+
 select(STDOUT); $| = 1;
 select(STDERR); $| = 1;
 select(STDOUT);
 
+our $ascii;
+our $showParents;
+our $abbrev;
+our $stdin;
+our $topoOrder;
+
+Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
+Getopt::Long::GetOptions(
+    'ascii'                => \$ascii,
+    'parents|show-parents' => \$showParents,
+    'abbrev'               => \$abbrev,
+    'stdin'                => \$stdin,
+    'topo-order'           => \$topoOrder,
+) or die("Type '$0 --help' for help.\n");
+
 my $g2 = My::Git::Graph2->new();
+$g2->ascii($ascii);
+$g2->showParents($showParents);
+$g2->abbrev($abbrev);
+$g2->stdin($stdin);
 $g2->run(@ARGV);
+
+sub usage { print(<<"END"); }
+usage:
+    git graph2 [<option> ...] <git-log-args>
+    git graph2 --stdin
+options:
+    --ascii
+    --show-parents
+    --abbrev
+    --stdin
+    --topo-order
+END
 
 package My::Git::Graph2 {
     use Text::Tabs qw(expand);
@@ -51,7 +84,7 @@ package My::Git::Graph2 {
         has showParents            => (is => 'rw', default => 0);
         has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
-        has stdin                  => (is => 'rw', default => 1);
+        has stdin                  => (is => 'rw', default => 0);
         has breathingRoom          => (is => 'rw', default => 0);
 
         has style                  => (is => 'rw', default => 1);
@@ -289,7 +322,7 @@ package My::Git::Graph2 {
                     $result .= "  ";
                 }
             } elsif ($i == $self->commitColumnNumber) {
-                if ($i != $column->{parentNumber}) {
+                if (defined $column->{parentNumber} && $i != $column->{parentNumber}) {
                     if ($i < $column->{parentNumber}) {
                         $result .= $self->ascii ? "'" : "╰";
                     } else {
