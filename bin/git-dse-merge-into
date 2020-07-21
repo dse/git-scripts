@@ -28,6 +28,15 @@ FAIL () {
     exit 1
 }
 
+usage () { cat <<EOF; }
+usage:
+    git dse-merge-into [<option> ...] <branch>
+options:
+    --help
+    --no-ff
+    --ignore-changes
+EOF
+
 main () {
     if (( $# < 1 )) ; then
         >&2 echo "usage: git merge-into <dest-branch>"
