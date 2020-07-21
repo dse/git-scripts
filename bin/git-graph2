@@ -26,6 +26,19 @@ Getopt::Long::GetOptions(
     'parents|show-parents' => \$showParents,
     'stdin'                => \$stdin,
 
+    'tweak-first-parent=s' => sub {
+        my ($option, $value) = @_;
+        my @value = split(/,/, $value);
+        foreach my $value (@value) {
+            my $parent = $value;
+            my $child;
+            if ($parent =~ /=/) {
+                ($parent, $child) = ($`, $');
+            }
+            $g2->tweakFirstParent->{$parent} = $child // 'any';
+        }
+    },
+
     # git log options
     'abbrev:i'             => sub { $g2->getoptLongOption('--abbrev', 'optional', @_); },
     'abbrev-commit'        => sub { $g2->getoptLongOption('--abbrev-commit'); },
@@ -141,6 +154,8 @@ package My::Git::Graph2 {
         has dryRun                 => (is => 'rw', default => 0);
 
         has style                  => (is => 'rw', default => 1);
+
+        has tweakFirstParent       => (is => 'rw', default => sub { return {}; });
     }
 
     sub run {
@@ -250,10 +265,24 @@ package My::Git::Graph2 {
         if (defined $self->commit) {
             $self->printCommit();
         }
-
         if (!$self->showParents) {
             foreach my $parent (@parents) {
                 $line =~ s{\s+$parent\b}{};
+            }
+        }
+
+        # if --tweak-first-parent=A is specified:
+        #     when commit A is found as a parent, force it to be the first parent
+        # if --tweak-first-parent=A=B is specified:
+        #     when commit A is found as a parent of B, force it to be the first parent of B
+        foreach my $parent (@parents) {
+            my $isFirst = $self->tweakFirstParent->{$parent};
+            if (defined $isFirst && $isFirst eq 'any') {
+                @parents = ($parent, grep { $_ ne $parent } @parents);
+                last;
+            } elsif (defined $isFirst && $isFirst eq $commit) {
+                @parents = ($parent, grep { $_ ne $parent } @parents);
+                last;
             }
         }
 
