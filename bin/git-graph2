@@ -12,41 +12,77 @@ select(STDOUT); $| = 1;
 select(STDERR); $| = 1;
 select(STDOUT);
 
+my $g2 = My::Git::Graph2->new();
+
 our $ascii;
 our $showParents;
-our $abbrev;
 our $stdin;
-our $topoOrder;
+our $verbosity = 0;
+our $dryRun;
 
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
     'ascii'                => \$ascii,
     'parents|show-parents' => \$showParents,
-    'abbrev'               => \$abbrev,
     'stdin'                => \$stdin,
-    'topo-order'           => \$topoOrder,
+
+    # git log options
+    'abbrev:i'             => sub { $g2->getoptLongOption('--abbrev', 'optional', @_); },
+    'abbrev-commit'        => sub { $g2->getoptLongOption('--abbrev-commit'); },
+    'no-abbrev-commit'     => sub { $g2->getoptLongOption('--no-abbrev-commit'); },
+    'all'                  => sub { $g2->getoptLongOption('--all'); },
+    'author-date-order'    => sub { $g2->getoptLongOption('--author-date-order'); },
+    'date-order'           => sub { $g2->getoptLongOption('--date-order'); },
+    'decorate:s'           => sub { $g2->getoptLongOption('--decorate', 'optional', @_); },
+    'name-status'          => sub { $g2->getoptLongOption('--name-status'); },
+    'oneline|one-line'     => sub { $g2->getoptLongOption('--oneline'); },
+    'pretty:s'             => sub { $g2->getoptLongOption('--pretty', 'optional', @_); },
+    'topo-order'           => sub { $g2->getoptLongOption('--topo-order'); },
+
+    'v|verbose+'           => \$verbosity,
+    'h|help'               => sub { usage(); exit(0); },
+    'n|dry-run'            => \$dryRun,
 ) or die("Type '$0 --help' for help.\n");
 
-my $g2 = My::Git::Graph2->new();
+$g2->verbosity($verbosity);
 $g2->ascii($ascii);
 $g2->showParents($showParents);
-$g2->abbrev($abbrev);
 $g2->stdin($stdin);
+
+if ($g2->verbosity || $g2->dryRun) {
+    say(scalar($g2->getGitCommand(@ARGV)));
+}
+
+if ($g2->dryRun) {
+    exit(0);
+}
+
 $g2->run(@ARGV);
 
 sub usage { print(<<"END"); }
 usage:
-    git graph2 [<option> ...] <git-log-args>
-    git graph2 --stdin
+    git graph2 [<option> ...] [<revision range>] [[--] <path> ...]
+    git graph2 --stdin [<option> ...] [<filename> ...]
 options:
     --ascii
     --show-parents
     --abbrev
-    --stdin
+    --stdin              read from stdin (or files) instead of running git log
+options passed to git log:
+    --abbrev[=<n>]
+    --abbrev-commit
+    --all
+    --author-date-order
+    --date-order
+    --decorate[=short|full|auto|no]
+    --name-status
+    --oneline
+    --pretty[=<format>]
     --topo-order
 END
 
 package My::Git::Graph2 {
+    use String::ShellQuote qw(shell_quote);
     use Text::Tabs qw(expand);
     use Data::Dumper qw(Dumper);
     use Storable qw(dclone);
@@ -69,6 +105,7 @@ package My::Git::Graph2 {
     use constant THIS_COMMIT_ASCII         => '*';
 
     INIT {
+        # state
         has commitLog              => (is => 'rw', default => sub { return []; });
         has commit                 => (is => 'rw');
         has parents                => (is => 'rw', default => sub { return []; });
@@ -77,15 +114,16 @@ package My::Git::Graph2 {
         has columnNumbers          => (is => 'rw', default => sub { return {}; });
         has hasKtulu               => (is => 'rw', default => 0);
 
+        has gitLogOptions          => (is => 'rw', default => sub { return []; });
+
         # options
-        has oneLine                => (is => 'rw', default => 1);
-        has topoOrder              => (is => 'rw', default => 1);
         has ascii                  => (is => 'rw', default => 0);
         has showParents            => (is => 'rw', default => 0);
-        has abbrev                 => (is => 'rw', default => 1);
         has padding                => (is => 'rw', default => 32);
         has stdin                  => (is => 'rw', default => 0);
         has breathingRoom          => (is => 'rw', default => 0);
+        has verbosity              => (is => 'rw', default => 0);
+        has dryRun                 => (is => 'rw', default => 0);
 
         has style                  => (is => 'rw', default => 1);
     }
@@ -96,6 +134,31 @@ package My::Git::Graph2 {
             $self->runStdin(@args);
         } else {
             $self->runGit(@args);
+        }
+    }
+
+    sub getoptLongOption {
+        my ($self, $option, $type, @getoptLongArgs) = @_;
+        my ($optionName, $value, $key) = @getoptLongArgs;
+
+        $type //= 'none';
+
+        if (defined $value) {
+            if ($type eq 'required') {
+                push(@{$self->gitLogOptions}, $option . '=' . $value);
+            } else {
+                if ($value eq '') {
+                    push(@{$self->gitLogOptions}, $option);
+                } else {
+                    push(@{$self->gitLogOptions}, $option . '=' . $value);
+                }
+            }
+        } else {
+            if ($type eq 'required') {
+                push(@{$self->gitLogOptions}, $option . '=');
+            } else {
+                push(@{$self->gitLogOptions}, $option);
+            }
         }
     }
 
@@ -110,10 +173,7 @@ package My::Git::Graph2 {
         $self->initialize();
         my $ph;
         if (!open($ph, '-|', 'git', 'log', '--parents',
-                  '--all',
-                  '--decorate',
-                  ($self->oneLine ? ('--oneline') : ()),
-                  ($self->topoOrder ? ('--topo-order') : ()),
+                  @{$self->gitLogOptions},
                   @args)) {
             warn("failed to open pipe to git: $!\n");
             return;
@@ -156,14 +216,12 @@ package My::Git::Graph2 {
         }
 
         my $newLine = '';
-        $newLine .= substr($commit, 0, 8) . ' ' if $self->abbrev;
-        $newLine .= $commit               . ' ' if !$self->abbrev;
+        $newLine .= $commit . ' ';
         my @parents;
         while ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
             my $parent = $1;
             if ($self->showParents) {
-                $newLine .= substr($parent, 0, 8) . ' ' if $self->abbrev;
-                $newLine .= $parent               . ' ' if !$self->abbrev;
+                $newLine .= $parent . ' ';
             }
             push(@parents, $parent);
         }
@@ -473,8 +531,20 @@ package My::Git::Graph2 {
             }
         }
 
-
         $self->cleanupColumns();
+    }
+
+    sub getGitCommand {
+        my ($self, @args) = @_;
+        my @cmd = (
+            'git', 'log', '--parents',
+            @{$self->gitLogOptions},
+            @args
+        );
+        if (wantarray) {
+            return @cmd;
+        }
+        return shell_quote(@cmd);
     }
 
 };
