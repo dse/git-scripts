@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+if (( $# < 7 )) ; then
+    >&2 echo "not enough arguments"
+    exit 1
+fi
+if ! perl -MJSON::XS -eexit ; then
+    diff "$2" "$5"
+    exit 0
+fi
+temp1="$(mktemp)"
+temp2="$(mktemp)"
+perl -MJSON::XS -0777 -n -e 'print(JSON::XS->new->ascii->canonical->pretty->encode(decode_json($_)))' "$2" >"$temp1"
+perl -MJSON::XS -0777 -n -e 'print(JSON::XS->new->ascii->canonical->pretty->encode(decode_json($_)))' "$5" >"$temp2"
+git diff --no-index "$temp1" "$temp2"
+rm "${temp1}"
+rm "${temp2}"
