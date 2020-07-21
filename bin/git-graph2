@@ -38,6 +38,18 @@ Getopt::Long::GetOptions(
     'oneline|one-line'     => sub { $g2->getoptLongOption('--oneline'); },
     'pretty:s'             => sub { $g2->getoptLongOption('--pretty', 'optional', @_); },
     'topo-order'           => sub { $g2->getoptLongOption('--topo-order'); },
+    'color:s'              => sub { $g2->getoptLongOption('--color', 'optional', @_); },
+    'exclude:s'            => sub { $g2->getoptLongOption('--exclude', 'optional', @_); },
+    'graph'                => sub { }, # has no effect
+
+    'adog' => sub {
+        push(
+            @{$g2->gitLogOptions},
+            '--all',
+            '--oneline',
+            '--decorate',
+        );
+    },
 
     'v|verbose+'           => \$verbosity,
     'h|help'               => sub { usage(); exit(0); },
@@ -113,7 +125,9 @@ package My::Git::Graph2 {
         has columns                => (is => 'rw', default => sub { return []; });
         has commitColumnNumber     => (is => 'rw');
         has columnNumbers          => (is => 'rw', default => sub { return {}; });
-        has hasKtulu               => (is => 'rw', default => 0);
+
+        # a commit "has spaghetti" if its main parent was mentioned in a previous git log entry, indicating
+        has hasSpaghetti           => (is => 'rw', default => 0);
 
         has gitLogOptions          => (is => 'rw', default => sub { return []; });
 
@@ -188,11 +202,7 @@ package My::Git::Graph2 {
         local $/ = "\n";  # $INPUT_RECORD_SEPARATOR
         my @commit;
         while (<$fh>) {
-            my $origLine = $_;
-            s{\R\z}{};
-            $_ = expand($_);    # tabs lol
-            my $line = $_;
-            $self->parseLine($line);
+            $self->parseLine($_);
         }
         $self->eof();
     }
@@ -203,7 +213,10 @@ package My::Git::Graph2 {
 
     sub parseLine {
         my ($self, $line) = @_;
+        $line =~ s{\R\z}{};
         my $origLine = $line;
+
+        $line =~ s{\e\[[0-9;]*m}{}g;
 
         my $commit;
 
@@ -216,17 +229,12 @@ package My::Git::Graph2 {
             return;
         }
 
-        my $newLine = '';
-        $newLine .= $commit . ' ';
         my @parents;
         while ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
             my $parent = $1;
-            if ($self->showParents) {
-                $newLine .= $parent . ' ';
-            }
             push(@parents, $parent);
         }
-        $self->startNextCommit($newLine . $line, $commit, @parents);
+        $self->startNextCommit($origLine, $commit, @parents);
     }
 
     sub eof {
@@ -243,10 +251,16 @@ package My::Git::Graph2 {
             $self->printCommit();
         }
 
+        if (!$self->showParents) {
+            foreach my $parent (@parents) {
+                $line =~ s{\s+$parent\b}{};
+            }
+        }
+
         $self->commitLog([$line]);
         $self->commit($commit);
         $self->parents(\@parents);
-        $self->hasKtulu(0);
+        $self->hasSpaghetti(0);
     }
 
     sub computeColumns {
@@ -294,7 +308,7 @@ package My::Git::Graph2 {
             $commitColumn->{parent} = $parent;
             $commitColumn->{parentNumber} = $parentColumnNumber;
             if ($commitColumn->{number} != $commitColumn->{parentNumber}) {
-                $self->hasKtulu(1);
+                $self->hasSpaghetti(1);
             }
         }
 
@@ -310,7 +324,7 @@ package My::Git::Graph2 {
                     new => 1,
                 };
                 push(@{$self->columns}, $column);
-                $self->hasKtulu(1);
+                $self->hasSpaghetti(1);
             }
         }
 
@@ -359,7 +373,7 @@ package My::Git::Graph2 {
 
     use List::Util qw(min max);
 
-    sub computeKtuluLine {
+    sub computeSpaghettiLine {
         my ($self) = @_;
         my $result = "";
         my @p = grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
@@ -500,9 +514,9 @@ package My::Git::Graph2 {
         $self->computeColumns();
 
         if ($self->style == 1) {
-            my $graph = $self->computeGraphLine();
-            my $post  = $self->computePostGraphLine();
-            my $ktulu = $self->computeKtuluLine();
+            my $graph     = $self->computeGraphLine();
+            my $post      = $self->computePostGraphLine();
+            my $spaghetti = $self->computeSpaghettiLine();
 
             my $first = 1;
             foreach my $log (@{$self->commitLog}) {
@@ -514,8 +528,8 @@ package My::Git::Graph2 {
                 }
             }
 
-            if ($self->hasKtulu) {
-                print($ktulu . "\n");
+            if ($self->hasSpaghetti) {
+                print($spaghetti . "\n");
             }
         } else {
             my $graph = $self->computeGraphLine2();
