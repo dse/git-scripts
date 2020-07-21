@@ -68,6 +68,7 @@ options:
     --show-parents
     --abbrev
     --stdin              read from stdin (or files) instead of running git log
+                         (stdin must have come from run git log --parents)
 options passed to git log:
     --abbrev[=<n>]
     --abbrev-commit
