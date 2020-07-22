@@ -4,22 +4,35 @@ use strict;
 use v5.10.0;
 use utf8;
 
-use open ':locale';
+#------------------------------------------------------------------------------
+use File::Basename qw(basename);
+our $PROGNAME = basename($0);
 
-use Getopt::Long;
+#------------------------------------------------------------------------------
+use open IO => qw(:locale);
+use Encode::Locale;
+use Encode qw(decode);
+BEGIN {
+    @ARGV = map { decode('locale', $_, Encode::FB_CROAK) } @ARGV;
+}
 
+#------------------------------------------------------------------------------
 select(STDOUT); $| = 1;
 select(STDERR); $| = 1;
 select(STDOUT);
 
+#------------------------------------------------------------------------------
 my $g2 = My::Git::Graph2->new();
 
+#------------------------------------------------------------------------------
 our $ascii;
 our $showParents;
 our $stdin;
 our $verbosity = 0;
 our $dryRun;
 
+#------------------------------------------------------------------------------
+use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
     'ascii'                => \$ascii,
@@ -67,22 +80,7 @@ Getopt::Long::GetOptions(
     'v|verbose+'           => \$verbosity,
     'h|help'               => sub { usage(); exit(0); },
     'n|dry-run'            => \$dryRun,
-) or die("Type '$0 --help' for help.\n");
-
-$g2->verbosity($verbosity);
-$g2->ascii($ascii);
-$g2->showParents($showParents);
-$g2->stdin($stdin);
-
-if ($g2->verbosity || $g2->dryRun) {
-    say(scalar($g2->getGitCommand(@ARGV)));
-}
-
-if ($g2->dryRun) {
-    exit(0);
-}
-
-$g2->run(@ARGV);
+) or die("Type '$PROGNAME --help' for help.  Type 'perldoc $PROGNAME' for a manual page.\n");
 
 sub usage { print(<<"END"); }
 usage:
@@ -112,7 +110,27 @@ options passed to git log:
         --oneline
         --pretty[=<format>]
         --topo-order
+Type 'perldoc $PROGNAME' for a manual page.
 END
+
+###############################################################################
+
+$g2->verbosity($verbosity);
+$g2->ascii($ascii);
+$g2->showParents($showParents);
+$g2->stdin($stdin);
+
+if ($g2->verbosity || $g2->dryRun) {
+    say(scalar($g2->getGitCommand(@ARGV)));
+}
+
+if ($g2->dryRun) {
+    exit(0);
+}
+
+$g2->run(@ARGV);
+
+###############################################################################
 
 package My::Git::Graph2 {
     use String::ShellQuote qw(shell_quote);
