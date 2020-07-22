@@ -644,7 +644,7 @@ git graph2 --- a "git log --graph" alternative without diagonals.
 
 =head1 SYNOPSIS
 
-To run "git log":
+To run "git log" and display a graph in one step:
 
     git graph2 [--ascii]
                [--parents|--show-parents]
