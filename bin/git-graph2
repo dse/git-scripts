@@ -130,6 +130,8 @@ package My::Git::Graph2 {
     use constant THIS_COMMIT               => BLACK_SQUARE;
     use constant THIS_COMMIT_ASCII         => '*';
 
+    use constant COMBINING_LONG_VERTICAL_LINE_OVERLAY => "\x{20d2}";
+
     INIT {
         # state
         has commitLog              => (is => 'rw', default => sub { return []; });
@@ -405,14 +407,30 @@ package My::Git::Graph2 {
     sub computeSpaghettiLine {
         my ($self) = @_;
         my $result = "";
+
+        my $ccn = $self->commitColumnNumber;
+
+        # column numbers of parents
         my @p = grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
-        my $minp = min(@p);
-        my $maxp = max(@p);
+        my $minp = scalar @p ? min(@p) : undef;
+        my $maxp = scalar @p ? max(@p) : undef;
         my %p = map { ($_ => 1) } @p;
+
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
-            if ($i < $self->commitColumnNumber) {
-                my $hbar = defined $minp && $i >= $minp;
+
+            my $hbar = defined $minp && defined $maxp && (($i < $ccn) ? ($minp <= $i) :
+                                                              ($i > $ccn) ? ($i <= $maxp) :
+                                                              ($minp < $i && $i < $maxp));
+            my $hasLeftParent  = ($i == $ccn) && defined $minp && $minp < $i; # ╰
+            my $hasRightParent = ($i == $ccn) && defined $maxp && $maxp > $i; # ╯
+            my $hasDownParent  = ($i == $ccn) && $p{$i}; # │
+            my $isLeftParent   = ($i < $ccn) && $p{$i}; # ╭
+            my $isRightParent  = ($i > $ccn) && $p{$i}; # ╮
+            my $isTreeLine     = defined $column && !$column->{closing} && defined $column->{commit}; # │
+
+            if ($i < $ccn) {
+                # my $hbar = defined $minp && $i >= $minp;
                 if (!defined $column || $column->{closing}) {
                     $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
                 } elsif ($p{$i}) {
@@ -421,9 +439,10 @@ package My::Git::Graph2 {
                     $result .= $hbar ? '|-' : '| ' if $self->ascii;
                     $result .= $hbar ? '┼─' : '│ ' if !$self->ascii;
                 } else {
-                    $result .= "  ";
+                    $result .= $hbar ? '--' : "  " if $self->ascii;
+                    $result .= $hbar ? '──' : "  " if !$self->ascii;
                 }
-            } elsif ($i == $self->commitColumnNumber) {
+            } elsif ($i == $ccn) {
                 if (defined $column->{parentNumber} && $i != $column->{parentNumber}) {
                     if ($i < $column->{parentNumber}) {
                         $result .= $self->ascii ? "'" : "╰";
@@ -441,7 +460,7 @@ package My::Git::Graph2 {
                     $result .= ($self->ascii ? "|" : "│");
                 }
             } else {
-                my $hbar = defined $maxp && $i <= $maxp;
+                # my $hbar = defined $maxp && $i <= $maxp;
                 if (!defined $column || $column->{closing}) {
                     $result .= $hbar ? ($self->ascii ? '--' : '──') : '  ';
                 } elsif ($p{$i}) {
@@ -450,7 +469,8 @@ package My::Git::Graph2 {
                     $result .= $hbar ? '-|' : ' |' if $self->ascii;
                     $result .= $hbar ? '─┼' : ' │' if !$self->ascii;
                 } else {
-                    $result .= "  ";
+                    $result .= $hbar ? '--' : "  " if $self->ascii;
+                    $result .= $hbar ? '──' : "  " if !$self->ascii;
                 }
             }
         }
