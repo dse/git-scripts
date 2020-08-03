@@ -170,9 +170,6 @@ package My::Git::Graph2 {
         has commitColumnNumber     => (is => 'rw');
         has columnNumbers          => (is => 'rw', default => sub { return {}; });
 
-        # a commit "has spaghetti" if its main parent was mentioned in a previous git log entry, indicating
-        has hasSpaghetti           => (is => 'rw', default => 0);
-
         has gitLogOptions          => (is => 'rw', default => sub { return []; });
 
         # options
@@ -320,7 +317,6 @@ package My::Git::Graph2 {
         $self->commitLog([$line]);
         $self->commit($commit);
         $self->parents(\@parents);
-        $self->hasSpaghetti(0);
     }
 
     sub computeColumns {
@@ -367,9 +363,6 @@ package My::Git::Graph2 {
         } else {
             $commitColumn->{parent} = $parent;
             $commitColumn->{parentNumber} = $parentColumnNumber;
-            if ($commitColumn->{number} != $commitColumn->{parentNumber}) {
-                $self->hasSpaghetti(1);
-            }
         }
 
         foreach my $otherParent (@{$self->parents}) {
@@ -384,7 +377,6 @@ package My::Git::Graph2 {
                     new => 1,
                 };
                 push(@{$self->columns}, $column);
-                $self->hasSpaghetti(1);
             }
         }
 
