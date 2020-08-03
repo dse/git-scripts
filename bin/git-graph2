@@ -22,7 +22,7 @@ select(STDERR); $| = 1;
 select(STDOUT);
 
 #------------------------------------------------------------------------------
-my $g2 = My::Git::Graph2->new();
+my $g2 = My::Git::Graph2::Style1->new();
 
 #------------------------------------------------------------------------------
 our $ascii;
@@ -391,8 +391,6 @@ package My::Git::Graph2 {
         $self->commitColumnNumber($commitColumnNumber);
     }
 
-    use List::Util qw(min max);
-
     sub cleanupColumns {
         my ($self) = @_;
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
@@ -451,72 +449,6 @@ package My::Git::Graph2 {
         return grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
     }
 
-    sub computeGraphLine3 {
-        my ($self) = @_;
-        my $result = ' ' x (3 * scalar @{$self->columns});
-        substr($result, $self->commitColumnNumber * 3, 1) = '#';
-        foreach my $i ($self->computeActiveColumnNumbers) {
-            substr($result, $i * 3, 1) = '|';
-        }
-        return $result;
-        $result = sprintf('%-*s', $self->padding, $result);
-        return $result;
-    }
-
-    sub computeAdditionalGraphLines3 {
-        my ($self) = @_;
-        my $line1 = ' ' x (3 * scalar @{$self->columns});
-        my $line2 = ' ' x (3 * scalar @{$self->columns});
-        foreach my $i ($self->computeActiveColumnNumbers) {
-            substr($line1, $i * 3, 1) = '|';
-            substr($line2, $i * 3, 1) = '|';
-        }
-        foreach my $i ($self->computeParentColumnNumbers) {
-            if ($i == $self->commitColumnNumber) {
-                substr($line1, $i * 3, 1) = '|';
-                substr($line2, $i * 3, 1) = '|';
-            } elsif ($i < $self->commitColumnNumber) {
-                substr($line1, $self->commitColumnNumber * 3 - 1, 1) = '/';
-                for (my $j = $i * 3 + 2; $j <= $self->commitColumnNumber * 3 - 2; $j += 1) {
-                    if (substr($line1, $j, 1) eq '|') {
-                        substr($line1, $j, 1) = '+';
-                    } else {
-                        substr($line1, $j, 1) = '_';
-                    }
-                }
-                substr($line2, $i * 3 + 1, 1) = '/';
-            } elsif ($i > $self->commitColumnNumber) {
-                substr($line1, $self->commitColumnNumber * 3 + 1, 1) = '\\';
-                for (my $j = $self->commitColumnNumber * 3 + 2; $j <= $i * 3 - 2; $j += 1) {
-                    if (substr($line1, $j, 1) eq '|') {
-                        substr($line1, $j, 1) = '+';
-                    } else {
-                        substr($line1, $j, 1) = '_';
-                    }
-                }
-                substr($line2, $i * 3 - 1, 1) = '\\';
-            }
-        }
-        $line1 =~ s{\+}{|\x{0332}}g;
-        if (grep { $_ ne $self->commitColumnNumber } $self->computeParentColumnNumbers()) {
-            return ($line1, $line2);
-        }
-        return;
-    }
-
-    sub computeBlankGraphLine {
-        my ($self) = @_;
-        return ' ' x (3 * scalar @{$self->columns});
-    }
-
-    sub computeGraphLines {
-        my ($self) = @_;
-        return (
-            $self->computeGraphLine3,
-            $self->computeAdditionalGraphLines3,
-        );
-    }
-
     sub printCommit {
         my ($self) = @_;
 
@@ -526,7 +458,7 @@ package My::Git::Graph2 {
 
         foreach my $log (@{$self->commitLog}) {
             my $graphLine = shift(@graphLines);
-            $graphLine //= $self->computeBlankGraphLine();
+            $graphLine //= $self->computeExtendedGraphLine();
             print($graphLine . $log . "\n");
         }
 
@@ -548,6 +480,88 @@ package My::Git::Graph2 {
             return @cmd;
         }
         return shell_quote(@cmd);
+    }
+};
+
+package My::Git::Graph2::Style1 {
+    use Moo;
+    INIT {
+        extends 'My::Git::Graph2';
+    }
+    sub computeGraphLines {
+        my ($self) = @_;
+        return (
+            $self->computeGraphLine,
+            $self->computeAdditionalGraphLines,
+        );
+    }
+    sub computeGraphLine {
+        my ($self) = @_;
+        my $result = ' ' x (3 * scalar @{$self->columns});
+        substr($result, $self->commitColumnNumber * 3, 1) = '#';
+        foreach my $i ($self->computeActiveColumnNumbers) {
+            substr($result, $i * 3, 1) = '|';
+        }
+        return $result;
+        $result = sprintf('%-*s', $self->padding, $result);
+        return $result;
+    }
+    sub computeAdditionalGraphLines {
+        my ($self) = @_;
+        my $line1 = ' ' x (3 * scalar @{$self->columns});
+        my $line2 = ' ' x (3 * scalar @{$self->columns});
+        foreach my $i ($self->computeActiveColumnNumbers) {
+            substr($line1, $i * 3, 1) = '|';
+            substr($line2, $i * 3, 1) = '|';
+        }
+        foreach my $i ($self->computeParentColumnNumbers) {
+            if ($i == $self->commitColumnNumber) {
+                substr($line1, $i * 3, 1) = '|';
+                substr($line2, $i * 3, 1) = '|';
+            } elsif ($i < $self->commitColumnNumber) {
+                substr($line1, $self->commitColumnNumber * 3 - 1, 1) = '/';
+                for (my $j = $i * 3 + 2; $j <= $self->commitColumnNumber * 3 - 2; $j += 1) {
+                    if (substr($line1, $j, 1) eq '|') {
+                        substr($line1, $j, 1) = '|'; # ideally | combined with _
+                    } else {
+                        substr($line1, $j, 1) = '_';
+                    }
+                }
+                substr($line2, $i * 3 + 1, 1) = '/';
+            } elsif ($i > $self->commitColumnNumber) {
+                substr($line1, $self->commitColumnNumber * 3 + 1, 1) = '\\';
+                for (my $j = $self->commitColumnNumber * 3 + 2; $j <= $i * 3 - 2; $j += 1) {
+                    if (substr($line1, $j, 1) eq '|') {
+                        substr($line1, $j, 1) = '|'; # ideally | combined with _
+                    } else {
+                        substr($line1, $j, 1) = '_';
+                    }
+                }
+                substr($line2, $i * 3 - 1, 1) = '\\';
+            }
+        }
+        $line1 =~ s{\+}{|\x{0332}}g;
+        if (grep { $_ ne $self->commitColumnNumber } $self->computeParentColumnNumbers()) {
+            return ($line1, $line2);
+        }
+        return;
+    }
+    sub computeBlankGraphLine {
+        my ($self) = @_;
+        return ' ' x (3 * scalar @{$self->columns});
+    }
+    sub computeExtendedGraphLine {
+        my ($self) = @_;
+        my $result = ' ' x (3 * scalar @{$self->columns});
+        foreach my $i ($self->computeActiveColumnNumbers) {
+            substr($result, $i * 3, 1) = '|';
+        }
+        foreach my $i ($self->computeParentColumnNumbers) {
+            substr($result, $i * 3, 1) = '|';
+        }
+        return $result;
+        $result = sprintf('%-*s', $self->padding, $result);
+        return $result;
     }
 };
 
