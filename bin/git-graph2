@@ -540,7 +540,7 @@ package My::Git::Graph2::Style1 {
                 substr($line2, $i * 3 - 1, 1) = '\\';
             }
         }
-        $line1 =~ s{\+}{|\x{0332}}g;
+        # $line1 =~ s{\+}{|\x{0332}}g;
         if (grep { $_ ne $self->commitColumnNumber } $self->computeParentColumnNumbers()) {
             return ($line1, $line2);
         }
