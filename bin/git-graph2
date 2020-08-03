@@ -181,8 +181,6 @@ package My::Git::Graph2 {
         has verbosity              => (is => 'rw', default => 0);
         has dryRun                 => (is => 'rw', default => 0);
 
-        has style                  => (is => 'rw', default => 1);
-
         has tweakFirstParent       => (is => 'rw', default => sub { return {}; });
     }
 
