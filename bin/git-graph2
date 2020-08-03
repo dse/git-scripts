@@ -67,6 +67,7 @@ Getopt::Long::GetOptions(
     'oneline|one-line'     => sub { $g2->getoptLongOption('--oneline'); },
     'pretty:s'             => sub { $g2->getoptLongOption('--pretty', 'optional', @_); },
     'topo-order'           => sub { $g2->getoptLongOption('--topo-order'); },
+    'date=s'               => sub { $g2->getoptLongOption('--date', 'required', @_); },
 
     'adog' => sub {
         push(
@@ -110,8 +111,11 @@ options passed to git log:
         --oneline
         --pretty[=<format>]
         --topo-order
+        --date=<format>
 Type 'perldoc $PROGNAME' for a manual page.
 END
+
+# --pretty=format:'%h|%p|%ai|%d|%s'
 
 ###############################################################################
 
@@ -387,6 +391,167 @@ package My::Git::Graph2 {
         $self->commitColumnNumber($commitColumnNumber);
     }
 
+    use List::Util qw(min max);
+
+    sub cleanupColumns {
+        my ($self) = @_;
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (defined $column) {
+                if ($column->{closing}) {
+                    $self->columns->[$i] = undef;
+                }
+            }
+        }
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (defined $column) {
+                my $number = $column->{number};
+                my $parentNumber = $column->{parentNumber};
+                if (!defined $parentNumber || $number != $parentNumber) {
+                    if ($self->breathingRoom) {
+                        $self->columns->[$i]->{closing} = 1;
+                    } else {
+                        $self->columns->[$i] = undef;
+                    }
+                }
+            }
+        }
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (defined $column) {
+                $column->{new} = 0;
+            }
+        }
+        while (scalar @{$self->columns} && !defined $self->columns->[-1]) {
+            pop(@{$self->columns});
+        }
+    }
+
+    sub computeActiveColumnNumbers {
+        my ($self) = @_;
+        my @result = ();
+        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
+            my $column = $self->columns->[$i];
+            if (!defined $column || $column->{closing}) {
+                # empty column
+            } elsif ($i == $self->commitColumnNumber) {
+                # column for this commit; not included
+            } elsif (defined $column->{commit} && !$column->{new}) {
+                push(@result, $i);
+            } else {
+                # empty column
+            }
+        }
+        return @result;
+    }
+
+    sub computeParentColumnNumbers {
+        my ($self) = @_;
+        return grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
+    }
+
+    sub computeGraphLine3 {
+        my ($self) = @_;
+        my $result = ' ' x (3 * scalar @{$self->columns});
+        substr($result, $self->commitColumnNumber * 3, 1) = '#';
+        foreach my $i ($self->computeActiveColumnNumbers) {
+            substr($result, $i * 3, 1) = '|';
+        }
+        return $result;
+        $result = sprintf('%-*s', $self->padding, $result);
+        return $result;
+    }
+
+    sub computeAdditionalGraphLines3 {
+        my ($self) = @_;
+        my $line1 = ' ' x (3 * scalar @{$self->columns});
+        my $line2 = ' ' x (3 * scalar @{$self->columns});
+        foreach my $i ($self->computeActiveColumnNumbers) {
+            substr($line1, $i * 3, 1) = '|';
+            substr($line2, $i * 3, 1) = '|';
+        }
+        foreach my $i ($self->computeParentColumnNumbers) {
+            if ($i == $self->commitColumnNumber) {
+                substr($line1, $i * 3, 1) = '|';
+                substr($line2, $i * 3, 1) = '|';
+            } elsif ($i < $self->commitColumnNumber) {
+                substr($line1, $self->commitColumnNumber * 3 - 1, 1) = '/';
+                for (my $j = $i * 3 + 2; $j <= $self->commitColumnNumber * 3 - 2; $j += 1) {
+                    if (substr($line1, $j, 1) eq '|') {
+                        substr($line1, $j, 1) = '+';
+                    } else {
+                        substr($line1, $j, 1) = '_';
+                    }
+                }
+                substr($line2, $i * 3 + 1, 1) = '/';
+            } elsif ($i > $self->commitColumnNumber) {
+                substr($line1, $self->commitColumnNumber * 3 + 1, 1) = '\\';
+                for (my $j = $self->commitColumnNumber * 3 + 2; $j <= $i * 3 - 2; $j += 1) {
+                    if (substr($line1, $j, 1) eq '|') {
+                        substr($line1, $j, 1) = '+';
+                    } else {
+                        substr($line1, $j, 1) = '_';
+                    }
+                }
+                substr($line2, $i * 3 - 1, 1) = '\\';
+            }
+        }
+        $line1 =~ s{\+}{|\x{0332}}g;
+        if (grep { $_ ne $self->commitColumnNumber } $self->computeParentColumnNumbers()) {
+            return ($line1, $line2);
+        }
+        return;
+    }
+
+    sub computeBlankGraphLine {
+        my ($self) = @_;
+        return ' ' x (3 * scalar @{$self->columns});
+    }
+
+    sub computeGraphLines {
+        my ($self) = @_;
+        return (
+            $self->computeGraphLine3,
+            $self->computeAdditionalGraphLines3,
+        );
+    }
+
+    sub printCommit {
+        my ($self) = @_;
+
+        $self->computeColumns();
+
+        my @graphLines = $self->computeGraphLines();
+
+        foreach my $log (@{$self->commitLog}) {
+            my $graphLine = shift(@graphLines);
+            $graphLine //= $self->computeBlankGraphLine();
+            print($graphLine . $log . "\n");
+        }
+
+        foreach my $graphLine (@graphLines) {
+            print($graphLine . "\n");
+        }
+
+        $self->cleanupColumns();
+    }
+
+    sub getGitCommand {
+        my ($self, @args) = @_;
+        my @cmd = (
+            'git', 'log', '--parents',
+            @{$self->gitLogOptions},
+            @args
+        );
+        if (wantarray) {
+            return @cmd;
+        }
+        return shell_quote(@cmd);
+    }
+};
+
+package My::Git::Graph2::Unused {
     sub computeGraphLine {
         my ($self) = @_;
         my $result = '';
@@ -408,7 +573,6 @@ package My::Git::Graph2 {
         $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
-
     sub computePostGraphLine {
         my ($self) = @_;
         my $result = '';
@@ -426,9 +590,6 @@ package My::Git::Graph2 {
         $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
-
-    use List::Util qw(min max);
-
     sub computeSpaghettiLine {
         my ($self) = @_;
         my $result = "";
@@ -503,42 +664,6 @@ package My::Git::Graph2 {
         $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
-
-    sub cleanupColumns {
-        my ($self) = @_;
-        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
-            my $column = $self->columns->[$i];
-            if (defined $column) {
-                if ($column->{closing}) {
-                    $self->columns->[$i] = undef;
-                }
-            }
-        }
-        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
-            my $column = $self->columns->[$i];
-            if (defined $column) {
-                my $number = $column->{number};
-                my $parentNumber = $column->{parentNumber};
-                if (!defined $parentNumber || $number != $parentNumber) {
-                    if ($self->breathingRoom) {
-                        $self->columns->[$i]->{closing} = 1;
-                    } else {
-                        $self->columns->[$i] = undef;
-                    }
-                }
-            }
-        }
-        for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
-            my $column = $self->columns->[$i];
-            if (defined $column) {
-                $column->{new} = 0;
-            }
-        }
-        while (scalar @{$self->columns} && !defined $self->columns->[-1]) {
-            pop(@{$self->columns});
-        }
-    }
-
     sub computeGraphLine2 {
         my ($self) = @_;
         my $result = "";
@@ -581,61 +706,6 @@ package My::Git::Graph2 {
         $result = sprintf('%-*s', $self->padding, $result);
         return $result;
     }
-
-    sub printCommit {
-        my ($self) = @_;
-
-        $self->computeColumns();
-
-        if ($self->style == 1) {
-            my $graph     = $self->computeGraphLine();
-            my $post      = $self->computePostGraphLine();
-            my $spaghetti = $self->computeSpaghettiLine();
-
-            my $first = 1;
-            foreach my $log (@{$self->commitLog}) {
-                if ($first) {
-                    print($graph . $log . "\n");
-                    $first = 0;
-                } else {
-                    print($post . $log . "\n");
-                }
-            }
-
-            if ($self->hasSpaghetti) {
-                print($spaghetti . "\n");
-            }
-        } else {
-            my $graph = $self->computeGraphLine2();
-            my $post  = $self->computePostGraphLine();
-
-            my $first = 1;
-            foreach my $log (@{$self->commitLog}) {
-                if ($first) {
-                    print($graph . $log . "\n");
-                    $first = 0;
-                } else {
-                    print($post . $log . "\n");
-                }
-            }
-        }
-
-        $self->cleanupColumns();
-    }
-
-    sub getGitCommand {
-        my ($self, @args) = @_;
-        my @cmd = (
-            'git', 'log', '--parents',
-            @{$self->gitLogOptions},
-            @args
-        );
-        if (wantarray) {
-            return @cmd;
-        }
-        return shell_quote(@cmd);
-    }
-
 };
 
 =head1 NAME
@@ -763,6 +833,10 @@ this option is handled by "git graph2", not "git log".
 
 Pretty-print the contents of the commit logs in the given format.
 Same as in git-log(1), which see.
+
+When specifying a custom format ("--pretty=format:..."), the format
+specification must start with '%h %p ' or '%H %P ' in order for
+git-graph2 to continue to work properly.
 
 =item --topo-order
 
