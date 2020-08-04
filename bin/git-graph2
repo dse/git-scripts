@@ -150,6 +150,7 @@ package My::Git::Graph2 {
         has parents                => (is => 'rw', default => sub { return []; });
         has columns                => (is => 'rw', default => sub { return []; });
         has commitColumnNumber     => (is => 'rw');
+        has nextColumnNumber       => (is => 'rw', default => 0);
         has columnNumbers          => (is => 'rw', default => sub { return {}; });
 
         has gitLogOptions          => (is => 'rw', default => sub { return []; });
@@ -164,6 +165,12 @@ package My::Git::Graph2 {
         has dryRun                 => (is => 'rw', default => 0);
 
         has tweakFirstParent       => (is => 'rw', default => sub { return {}; });
+
+        has slurpAllCommits        => (is => 'rw', default => 0);
+
+        has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
+        has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
+        has commitLogs    => (is => 'rw', default => sub { return {}; }); # { commit => [ line, ... ] }
     }
 
     sub run {
@@ -248,8 +255,14 @@ package My::Git::Graph2 {
         } elsif ($line =~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
             $commit = $1;
         } else {
-            push(@{$self->commitLog}, $origLine);
-            return;
+            if ($self->slurpAllCommits) {
+                push(@{$self->commitLogs->{$self->commit}}, $origLine);
+                push(@{$self->commitLog}, $origLine);
+                return;
+            } else {
+                push(@{$self->commitLog}, $origLine);
+                return;
+            }
         }
 
         my @parents;
@@ -257,13 +270,40 @@ package My::Git::Graph2 {
             my $parent = $1;
             push(@parents, $parent);
         }
-        $self->startNextCommit($origLine, $commit, @parents);
+
+        my $commitLine = $origLine;
+
+        if (!$self->showParents) {
+            foreach my $parent (@parents) {
+                $commitLine =~ s{\s+$parent\b}{};
+            }
+        }
+
+        if ($self->slurpAllCommits) {
+            push(@{$self->commits}, $commit);
+            $self->commit($commit);
+            $self->commitParents->{$commit} = \@parents;
+            $self->commitLogs->{$commit} = [$commitLine];
+            $self->parents(\@parents);
+            $self->commitLog([$commitLine]);
+        } else {
+            $self->startNextCommit($commitLine, $commit, @parents);
+        }
     }
 
     sub eof {
         my ($self) = @_;
-        if (defined $self->commit) {
-            $self->printCommit();
+        if ($self->slurpAllCommits) {
+            foreach my $commit (@{$self->commits}) {
+                $self->commit($commit);
+                $self->parents($self->commitParents->{$commit});
+                $self->commitLog($self->commitLogs->{$commit});
+                $self->printCommit();
+            }
+        } else {
+            if (defined $self->commit) {
+                $self->printCommit();
+            }
         }
     }
 
@@ -272,11 +312,6 @@ package My::Git::Graph2 {
 
         if (defined $self->commit) {
             $self->printCommit();
-        }
-        if (!$self->showParents) {
-            foreach my $parent (@parents) {
-                $line =~ s{\s+$parent\b}{};
-            }
         }
 
         # if --tweak-first-parent=A is specified:
@@ -297,6 +332,58 @@ package My::Git::Graph2 {
         $self->commitLog([$line]);
         $self->commit($commit);
         $self->parents(\@parents);
+    }
+
+    sub getNextColumnNumber {
+        my ($self) = @_;
+        my $result = $self->nextColumnNumber;
+        $self->nextColumnNumber($self->nextColumnNumber + 1);
+        return $result;
+    }
+
+    sub swapColumnNumbers {
+        my ($self, $a, $b) = @_;
+        foreach my $commit (keys %{$self->columnNumbers}) {
+            if ($self->columnNumbers->{$commit} == $a) {
+                $self->columnNumbers->{$commit} = $b;
+            } elsif ($self->columnNumbers->{$commit} == $b) {
+                $self->columnNumbers->{$commit} = $a;
+            }
+        }
+    }
+
+    sub computeColumnNumbers {
+        my ($self) = @_;
+        my $commit = $self->commit;
+        my ($parent, @otherParents) = @{$self->parents};
+
+        {
+            my $columnNumber = $self->columnNumbers->{$commit};
+            if (!defined $columnNumber) {
+                $columnNumber = $self->getNextColumnNumber();
+                $self->columnNumbers->{$commit} = $columnNumber;
+            }
+        }
+
+        if (defined $parent) {
+            my $columnNumber = $self->columnNumbers->{$parent};
+            if (!defined $columnNumber) {
+                $columnNumber = $self->columnNumbers->{$commit};
+                $self->columnNumbers->{$commit} = $columnNumber;
+            } else {
+                #if ($columnNumber != $self->columnNumbers->{$commit}) {
+                #    $self->swapColumnNumbers($columnNumber, $self->columnNumbers->{$commit});
+                #}
+            }
+        }
+
+        foreach my $parent (@otherParents) {
+            my $columnNumber = $self->columnNumbers->{$parent};
+            if (!defined $columnNumber) {
+                $columnNumber = $self->getNextColumnNumber();
+                $self->columnNumbers->{$parent} = $columnNumber;
+            }
+        }
     }
 
     sub computeColumns {
