@@ -426,7 +426,7 @@ package My::Git::Graph2 {
             };
             push(@{$self->columns}, $commitColumn);
         } else {
-            $commitColumn->{parent} = $parent;
+            $commitColumn->{commit} = $parent;
             $commitColumn->{parentNumber} = $parentColumnNumber;
         }
 
