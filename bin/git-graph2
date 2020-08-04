@@ -143,24 +143,6 @@ package My::Git::Graph2 {
     use Storable qw(dclone);
     use Moo;
 
-    use constant BLACK_CIRCLE_FOR_RECORD   => '⏺'; # U+23FA
-    use constant BULLET                    => '•'; # U+2022
-    use constant END_OF_PROOF              => '∎'; # U+220E
-    use constant BLACK_SQUARE_FOR_STOP     => '⏹'; # U+23F9
-    use constant BLACK_SQUARE              => '■'; # U+25A0
-    use constant BLACK_DIAMOND             => '◆'; # U+25C6
-    use constant BLACK_CIRCLE              => '●'; # U+25CF
-    use constant BLACK_MEDIUM_SQUARE       => '◼'; # U+25FC
-    use constant BLACK_MEDIUM_SMALL_SQUARE => '◾'; # U+25FE
-    use constant MEDIUM_BLACK_CIRCLE       => '⚫'; # U+26AB
-    use constant BLACK_LARGE_SQUARE        => '⬛'; # U+2B1B
-    use constant BLACK_LARGE_CIRCLE        => '⬤'; # U+2B24
-
-    use constant THIS_COMMIT               => BLACK_SQUARE;
-    use constant THIS_COMMIT_ASCII         => '*';
-
-    use constant COMBINING_LONG_VERTICAL_LINE_OVERLAY => "\x{20d2}";
-
     INIT {
         # state
         has commitLog              => (is => 'rw', default => sub { return []; });
