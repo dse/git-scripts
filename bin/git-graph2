@@ -357,94 +357,38 @@ package My::Git::Graph2 {
         my $commit = $self->commit;
         my ($parent, @otherParents) = @{$self->parents};
 
-        {
-            my $columnNumber = $self->columnNumbers->{$commit};
-            if (!defined $columnNumber) {
-                $columnNumber = $self->getNextColumnNumber();
-                $self->columnNumbers->{$commit} = $columnNumber;
-            }
-        }
-
+        $self->columnNumbers->{$commit} //= $self->getNextColumnNumber();
+        $self->commitColumnNumber($self->columnNumbers->{$commit});
         if (defined $parent) {
-            my $columnNumber = $self->columnNumbers->{$parent};
-            if (!defined $columnNumber) {
-                $columnNumber = $self->columnNumbers->{$commit};
-                $self->columnNumbers->{$commit} = $columnNumber;
-            } else {
-                #if ($columnNumber != $self->columnNumbers->{$commit}) {
-                #    $self->swapColumnNumbers($columnNumber, $self->columnNumbers->{$commit});
-                #}
-            }
+            $self->columnNumbers->{$parent} //= $self->columnNumbers->{$commit};
         }
-
-        foreach my $parent (@otherParents) {
-            my $columnNumber = $self->columnNumbers->{$parent};
-            if (!defined $columnNumber) {
-                $columnNumber = $self->getNextColumnNumber();
-                $self->columnNumbers->{$parent} = $columnNumber;
-            }
+        foreach my $otherParent (@otherParents) {
+            $self->columnNumbers->{$otherParent} //= $self->getNextColumnNumber();
         }
     }
 
     sub computeColumns {
         my ($self) = @_;
-
-        my $commit = $self->commit; # always defined
+        my $commit = $self->commit;
         my ($parent, @otherParents) = @{$self->parents};
 
-        my $commitColumnNumber = $self->columnNumbers->{$commit};
-        my $parentColumnNumber = defined $parent ? $self->columnNumbers->{$parent} : undef;
-        my $commitColumn       = defined $commitColumnNumber ? $self->columns->[$commitColumnNumber] : undef;
-        my $parentColumn       = defined $parentColumnNumber ? $self->columns->[$parentColumnNumber] : undef;
+        $self->computeColumnNumbers();
 
-        if (!defined $commitColumnNumber && !defined $parentColumnNumber) {
-            $commitColumnNumber = scalar @{$self->columns};
-            $parentColumnNumber = scalar @{$self->columns} if defined $parent;
-            $self->columnNumbers->{$commit} = $commitColumnNumber;
-            $self->columnNumbers->{$parent} = $parentColumnNumber if defined $parentColumnNumber;
-            $commitColumn = {
-                commit => $parent,
-                parentNumber => $parentColumnNumber,
-            };
-            $parentColumn = $commitColumn if defined $parent;
-            push(@{$self->columns}, $commitColumn);
-        } elsif (!defined $parentColumnNumber) {
-            $commitColumn->{commit} = $parent;
-            if (defined $parent) {
-                $parentColumnNumber = $commitColumnNumber;
-                $self->columnNumbers->{$parent} = $parentColumnNumber;
-                $parentColumn = $commitColumn;
-                $commitColumn->{commit} = $parent;
-                $commitColumn->{parentNumber} = $parentColumnNumber;
-            }
-        } elsif (!defined $commitColumnNumber) {
-            $commitColumnNumber = scalar @{$self->columns};
-            $self->columnNumbers->{$commit} = $commitColumnNumber;
-            $commitColumn = {
-                commit => $parent,
-                parentNumber => $parentColumnNumber,
-            };
-            push(@{$self->columns}, $commitColumn);
-        } else {
-            $commitColumn->{commit} = $parent;
-            $commitColumn->{parentNumber} = $parentColumnNumber;
+        my $cn = $self->columnNumbers->{$commit};
+        $self->columns->[$cn] //= { };
+        $self->columns->[$cn]->{commit} = $parent;
+
+        if (defined $parent) {
+            my $cn = $self->columnNumbers->{$parent};
+            $self->columns->[$cn] //= { new => 1 };
+            $self->columns->[$cn]->{commit} = $parent;
         }
 
         foreach my $otherParent (@otherParents) {
-            my $columnNumber = $self->columnNumbers->{$otherParent};
-            if (!defined $columnNumber) {
-                $columnNumber = scalar @{$self->columns};
-                $self->columnNumbers->{$otherParent} = $columnNumber;
-                my $column = {
-                    commit => $parent,
-                    parentNumber => $columnNumber,
-                    new => 1,
-                };
-                push(@{$self->columns}, $column);
-            }
+            my $cn = $self->columnNumbers->{$otherParent};
+            $self->columns->[$cn] //= { new => 1 };
+            $self->columns->[$cn]->{commit} = $otherParent;
         }
-
-        $self->commitColumnNumber($commitColumnNumber);
     }
 
     sub cleanupColumns {
@@ -460,12 +404,28 @@ package My::Git::Graph2 {
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
             if (defined $column) {
-                my $parentNumber = $column->{parentNumber};
-                if (!defined $parentNumber || $parentNumber != $i) {
+                if (!defined $column->{commit}) {
                     if ($self->breathingRoom) {
                         $self->columns->[$i]->{closing} = 1;
+                        warn("$i closing\n");
                     } else {
                         $self->columns->[$i] = undef;
+                    }
+                } elsif ($i == $self->commitColumnNumber) {
+                    my $continues = 0;
+                    foreach my $parent (@{$self->parents}) {
+                        if ($self->columnNumbers->{$parent} == $i) {
+                            $continues = 1;
+                            last;
+                        }
+                    }
+                    if (!$continues) {
+                        if ($self->breathingRoom) {
+                            $self->columns->[$i]->{closing} = 1;
+                            warn("$i closing\n");
+                        } else {
+                            $self->columns->[$i] = undef;
+                        }
                     }
                 }
             }
@@ -478,6 +438,7 @@ package My::Git::Graph2 {
         }
         while (scalar @{$self->columns} && !defined $self->columns->[-1]) {
             pop(@{$self->columns});
+            $self->nextColumnNumber($self->nextColumnNumber - 1);
         }
     }
 
