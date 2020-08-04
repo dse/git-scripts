@@ -303,7 +303,7 @@ package My::Git::Graph2 {
         my ($self) = @_;
 
         my $commit = $self->commit; # always defined
-        my $parent = $self->parents->[0];
+        my ($parent, @otherParents) = @{$self->parents};
 
         my $commitColumnNumber = $self->columnNumbers->{$commit};
         my $parentColumnNumber = defined $parent ? $self->columnNumbers->{$parent} : undef;
@@ -316,7 +316,6 @@ package My::Git::Graph2 {
             $self->columnNumbers->{$commit} = $commitColumnNumber;
             $self->columnNumbers->{$parent} = $parentColumnNumber if defined $parentColumnNumber;
             $commitColumn = {
-                number => $commitColumnNumber,
                 commit => $parent,
                 parentNumber => $parentColumnNumber,
             };
@@ -335,7 +334,6 @@ package My::Git::Graph2 {
             $commitColumnNumber = scalar @{$self->columns};
             $self->columnNumbers->{$commit} = $commitColumnNumber;
             $commitColumn = {
-                number => $commitColumnNumber,
                 commit => $parent,
                 parentNumber => $parentColumnNumber,
             };
@@ -345,13 +343,12 @@ package My::Git::Graph2 {
             $commitColumn->{parentNumber} = $parentColumnNumber;
         }
 
-        foreach my $otherParent (@{$self->parents}) {
+        foreach my $otherParent (@otherParents) {
             my $columnNumber = $self->columnNumbers->{$otherParent};
             if (!defined $columnNumber) {
                 $columnNumber = scalar @{$self->columns};
                 $self->columnNumbers->{$otherParent} = $columnNumber;
                 my $column = {
-                    number => $columnNumber,
                     commit => $parent,
                     parentNumber => $columnNumber,
                     new => 1,
@@ -376,9 +373,8 @@ package My::Git::Graph2 {
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
             my $column = $self->columns->[$i];
             if (defined $column) {
-                my $number = $column->{number};
                 my $parentNumber = $column->{parentNumber};
-                if (!defined $parentNumber || $number != $parentNumber) {
+                if (!defined $parentNumber || $parentNumber != $i) {
                     if ($self->breathingRoom) {
                         $self->columns->[$i]->{closing} = 1;
                     } else {
