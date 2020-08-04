@@ -531,7 +531,6 @@ package My::Git::Graph2::Style1 {
         foreach my $i ($self->computeParentColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
-        return $result;
         $result = sprintf('%-*s', $self->padding, $result);
         # any post-processing goes here
         return $result;
