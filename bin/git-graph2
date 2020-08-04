@@ -151,8 +151,6 @@ package My::Git::Graph2 {
         has verbosity              => (is => 'rw', default => 0);
         has dryRun                 => (is => 'rw', default => 0);
 
-        has slurpAllCommits        => (is => 'rw', default => 0);
-
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
         has commitLogs    => (is => 'rw', default => sub { return {}; }); # { commit => [ line, ... ] }
@@ -240,14 +238,8 @@ package My::Git::Graph2 {
         } elsif ($line =~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
             $commit = $1;
         } else {
-            if ($self->slurpAllCommits) {
-                push(@{$self->commitLogs->{$self->commit}}, $origLine);
-                push(@{$self->commitLog}, $origLine);
-                return;
-            } else {
-                push(@{$self->commitLog}, $origLine);
-                return;
-            }
+            push(@{$self->commitLog}, $origLine);
+            return;
         }
 
         my @parents;
@@ -264,31 +256,13 @@ package My::Git::Graph2 {
             }
         }
 
-        if ($self->slurpAllCommits) {
-            push(@{$self->commits}, $commit);
-            $self->commit($commit);
-            $self->commitParents->{$commit} = \@parents;
-            $self->commitLogs->{$commit} = [$commitLine];
-            $self->parents(\@parents);
-            $self->commitLog([$commitLine]);
-        } else {
-            $self->startNextCommit($commitLine, $commit, @parents);
-        }
+        $self->startNextCommit($commitLine, $commit, @parents);
     }
 
     sub eof {
         my ($self) = @_;
-        if ($self->slurpAllCommits) {
-            foreach my $commit (@{$self->commits}) {
-                $self->commit($commit);
-                $self->parents($self->commitParents->{$commit});
-                $self->commitLog($self->commitLogs->{$commit});
-                $self->printCommit();
-            }
-        } else {
-            if (defined $self->commit) {
-                $self->printCommit();
-            }
+        if (defined $self->commit) {
+            $self->printCommit();
         }
     }
 
@@ -320,6 +294,7 @@ package My::Git::Graph2 {
                 $self->columnNumbers->{$commit} = $a;
             }
         }
+        ($self->columns->[$a], $self->columns->[$b]) = ($self->columns->[$b], $self->columns->[$a]);
     }
 
     sub computeColumnNumbers {
@@ -330,7 +305,9 @@ package My::Git::Graph2 {
         $self->columnNumbers->{$commit} //= $self->getNextColumnNumber();
         $self->commitColumnNumber($self->columnNumbers->{$commit});
         if (defined $parent) {
-            $self->columnNumbers->{$parent} //= $self->columnNumbers->{$commit};
+            if (!defined $self->columnNumbers->{$parent}) {
+                $self->columnNumbers->{$parent} = $self->columnNumbers->{$commit};
+            }
         }
         foreach my $otherParent (@otherParents) {
             $self->columnNumbers->{$otherParent} //= $self->getNextColumnNumber();
@@ -445,6 +422,14 @@ package My::Git::Graph2 {
         return grep { defined $_ } map { $self->columnNumbers->{$_} } @{$self->parents};
     }
 
+    sub computeGraphLines {
+        my ($self) = @_;
+        return (
+            $self->computeGraphLine,
+            $self->computeAdditionalGraphLines,
+        );
+    }
+
     sub printCommit {
         my ($self) = @_;
 
@@ -484,17 +469,10 @@ package My::Git::Graph2::Style1 {
     INIT {
         extends 'My::Git::Graph2';
     }
-    sub computeGraphLines {
-        my ($self) = @_;
-        return (
-            $self->computeGraphLine,
-            $self->computeAdditionalGraphLines,
-        );
-    }
     sub computeGraphLine {
         my ($self) = @_;
         my $result = ' ' x (3 * scalar @{$self->columns});
-        substr($result, $self->commitColumnNumber * 3, 1) = '#';
+        substr($result, $self->commitColumnNumber * 3, 1) = '*';
         foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
@@ -543,12 +521,6 @@ package My::Git::Graph2::Style1 {
             return ($line1, $line2);
         }
         return;
-    }
-    sub computeBlankGraphLine {
-        my ($self) = @_;
-        my $result = ' ' x (3 * scalar @{$self->columns});
-        # any post-processing goes here
-        return $result;
     }
     sub computeExtendedGraphLine {
         my ($self) = @_;
