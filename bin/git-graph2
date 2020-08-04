@@ -438,7 +438,7 @@ package My::Git::Graph2 {
         }
     }
 
-    sub computeActiveColumnNumbers {
+    sub computeOtherActiveColumnNumbers {
         my ($self) = @_;
         my @result = ();
         for (my $i = 0; $i < scalar @{$self->columns}; $i += 1) {
@@ -505,7 +505,7 @@ package My::Git::Graph2::Style1 {
         my ($self) = @_;
         my $result = ' ' x (3 * scalar @{$self->columns});
         substr($result, $self->commitColumnNumber * 3, 1) = '#';
-        foreach my $i ($self->computeActiveColumnNumbers) {
+        foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
         $result = sprintf('%-*s', $self->padding, $result);
@@ -516,7 +516,7 @@ package My::Git::Graph2::Style1 {
         my ($self) = @_;
         my $line1 = ' ' x (3 * scalar @{$self->columns});
         my $line2 = ' ' x (3 * scalar @{$self->columns});
-        foreach my $i ($self->computeActiveColumnNumbers) {
+        foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($line1, $i * 3, 1) = '|';
             substr($line2, $i * 3, 1) = '|';
         }
@@ -563,7 +563,7 @@ package My::Git::Graph2::Style1 {
     sub computeExtendedGraphLine {
         my ($self) = @_;
         my $result = ' ' x (3 * scalar @{$self->columns});
-        foreach my $i ($self->computeActiveColumnNumbers) {
+        foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
         foreach my $i ($self->computeParentColumnNumbers) {
