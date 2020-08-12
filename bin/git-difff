@@ -37,6 +37,8 @@ difff_arguments=(
     ":(exclude,icase)*.jpeg"
     ":(exclude,icase)*.png"
     ":(exclude,icase)*.gif"
+    ":(exclude,icase)parsed/templates/"
+    ":(exclude,icase)parsed/scss/"
 )
 
 if git diff --ignore-cr-at-eol --no-index /dev/null /dev/null >/dev/null 2>/dev/null ; then
