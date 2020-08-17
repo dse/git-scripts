@@ -41,6 +41,11 @@ Getopt::Long::GetOptions(
     'stdin'                => \$stdin,
     'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
 
+    'A=s'                  => sub { $g2->revList->{A} = { spec => $_[1] }; },
+    'B=s'                  => sub { $g2->revList->{B} = { spec => $_[1] }; },
+    'C=s'                  => sub { $g2->revList->{C} = { spec => $_[1] }; },
+    'D=s'                  => sub { $g2->revList->{D} = { spec => $_[1] }; },
+
     # git log options
     'abbrev:i'             => sub { $g2->getoptLongOption('--abbrev', 'optional', @_); },
     'abbrev-commit'        => sub { $g2->getoptLongOption('--abbrev-commit'); },
@@ -128,6 +133,7 @@ $g2->run(@ARGV);
 ###############################################################################
 
 package My::Git::Graph2 {
+    use Sort::Naturally qw(nsort);
     use String::ShellQuote qw(shell_quote);
     use Text::Tabs qw(expand);
     use Data::Dumper qw(Dumper);
@@ -157,6 +163,7 @@ package My::Git::Graph2 {
         has verbosity              => (is => 'rw', default => 0);
         has dryRun                 => (is => 'rw', default => 0);
         has wrapColumns            => (is => 'rw');
+        has revList                => (is => 'rw', default => sub { return {}; });
 
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
@@ -165,11 +172,85 @@ package My::Git::Graph2 {
 
     sub run {
         my ($self, @args) = @_;
+        $self->collectRevLists();
+        $self->printRevListLegends();
         if ($self->stdin) {
             $self->runStdin(@args);
         } else {
             $self->runGit(@args);
         }
+    }
+
+    sub collectRevLists {
+        my ($self) = shift;
+        foreach my $revListName (keys %{$self->revList}) {
+            my $spec = $self->revList->{$revListName}->{spec};
+            my $ph;
+            if (!open($ph, '-|', 'git', 'rev-list', $spec)) {
+                next revList;
+            }
+            my @revList;
+            while (<$ph>) {
+                s{\R\z}{};
+                s{^\s*}{};
+                s{\s*$}{};
+                if ($_ =~ m{^[[:xdigit:]]+$}) {
+                    push(@revList, $_);
+                }
+            }
+            $self->revList->{$revListName}->{revList} = [@revList];
+        }
+    }
+
+    sub printRevListLegends {
+        my ($self) = @_;
+        my $hasSomething = 0;
+        foreach my $revListName (nsort keys %{$self->revList}) {
+            my $spec = $self->revList->{$revListName}->{spec};
+            my $count = scalar @{$self->revList->{$revListName}->{revList}};
+            my $parenthetical = '';
+            if ($spec =~ m{^(.*)\.\.\.(.*)$}) {
+                my ($r1, $r2) = ($1, $2);
+                $parenthetical = sprintf(" (commits in %s or %s but not both)", $r2, $r1);
+            } elsif ($spec =~ m{^(.*)\.\.(.*)$}) {
+                my ($r1, $r2) = ($1, $2);
+                $parenthetical = sprintf(" (commits in %s but not in %s)", $r2, $r1);
+            }
+
+            printf("%-4s = %-32s   %4d revisions%s\n", $revListName, $spec, $count, $parenthetical);
+
+            $hasSomething = 1;
+        }
+        if ($hasSomething) {
+            print("\n");
+        }
+    }
+
+    sub revListHas {
+        my ($self, $revListName, $commit) = @_;
+        my $revList = $self->revList->{$revListName};
+        if (!$revList) {
+            return;
+        }
+        foreach my $rev (@{$revList->{revList}}) {
+            if (substr($rev, 0, length($commit)) eq $commit) {
+                return 1;
+            }
+            if (substr($commit, 0, length($rev)) eq $rev) {
+                return 1;
+            }
+        }
+        return;
+    }
+
+    sub whichRevListHas {
+        my ($self, $commit) = @_;
+        foreach my $revListName (nsort keys %{$self->revList}) {
+            if ($self->revListHas($revListName, $commit)) {
+                return $revListName;
+            }
+        }
+        return;
     }
 
     sub getoptLongOption {
@@ -525,7 +606,10 @@ package My::Git::Graph2::Style1 {
     sub computeGraphLine {
         my ($self) = @_;
         my $result = ' ' x (3 * scalar @{$self->columns});
-        substr($result, $self->commitColumnNumber * 3, 1) = '*';
+
+        my $char = $self->whichRevListHas($self->commit) // '*';
+
+        substr($result, $self->commitColumnNumber * 3, 1) = $char;
         foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
