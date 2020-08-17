@@ -436,6 +436,27 @@ package My::Git::Graph2 {
         );
     }
 
+    sub finalizeWrapColumns {
+        if (defined $self->wrapColumns && !$self->wrapColumns) {
+            # i.e., zero, as is the case when --wrap is specified without a number
+            if (!-t 1) {
+                die("${PROGNAME}: not a tty: must specify number of columns for --wrap\n");
+                exit(1);
+            }
+            my $wrapColumns = `tput cols`;
+            if ($wrapColumns !~ m{(\d+)}) {
+                die("${PROGNAME}: could not get number of columns from terminal; must specify for --wrap\n");
+                exit(1);
+            }
+            $wrapColumns = $1;
+            if ($wrapColumns < 32) {
+                die("${PROGNAME}: must have at least 32 columns for --wrap\n");
+                exit(1);
+            }
+            $self->wrapColumns($wrapColumns);
+        }
+    }
+
     sub printCommit {
         my ($self) = @_;
 
@@ -449,24 +470,7 @@ package My::Git::Graph2 {
             my $graphLine = shift(@graphLines);
             $graphLine //= $self->computeExtendedGraphLine();
 
-            if (defined $self->wrapColumns && !$self->wrapColumns) {
-                # i.e., zero, as is the case when --wrap is specified without a number
-                if (!-t 1) {
-                    die("${PROGNAME}: not a tty: must specify number of columns for --wrap\n");
-                    exit(1);
-                }
-                my $wrapColumns = `tput cols`;
-                if ($wrapColumns !~ m{(\d+)}) {
-                    die("${PROGNAME}: could not get number of columns from terminal; must specify for --wrap\n");
-                    exit(1);
-                }
-                $wrapColumns = $1;
-                if ($wrapColumns < 32) {
-                    die("${PROGNAME}: must have at least 32 columns for --wrap\n");
-                    exit(1);
-                }
-                $self->wrapColumns($wrapColumns);
-            }
+            $self->finalizeWrapColumns();
 
             if ($self->wrapColumns) {
                 my $logColumns = $self->wrapColumns - length($graphLine);
