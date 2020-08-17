@@ -30,6 +30,7 @@ our $showParents;
 our $stdin;
 our $verbosity = 0;
 our $dryRun;
+our $wrapColumns;
 
 #------------------------------------------------------------------------------
 use Getopt::Long;
@@ -38,6 +39,7 @@ Getopt::Long::GetOptions(
     'ascii'                => \$ascii,
     'parents|show-parents' => \$showParents,
     'stdin'                => \$stdin,
+    'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
 
     # git log options
     'abbrev:i'             => sub { $g2->getoptLongOption('--abbrev', 'optional', @_); },
@@ -82,6 +84,7 @@ options:
         --abbrev
         --stdin
     -v, --verbose
+        --wrap[=<num>]
 options passed to git log:
         --abbrev[=<n>]
         --abbrev-commit
@@ -110,6 +113,7 @@ $g2->verbosity($verbosity);
 $g2->ascii($ascii);
 $g2->showParents($showParents);
 $g2->stdin($stdin);
+$g2->wrapColumns($wrapColumns) if defined $wrapColumns;
 
 if ($g2->verbosity || $g2->dryRun) {
     say(scalar($g2->getGitCommand(@ARGV)));
@@ -128,6 +132,7 @@ package My::Git::Graph2 {
     use Text::Tabs qw(expand);
     use Data::Dumper qw(Dumper);
     use Storable qw(dclone);
+    use Text::Wrap qw();
     use Moo;
 
     INIT {
@@ -150,6 +155,7 @@ package My::Git::Graph2 {
         has breathingRoom          => (is => 'rw', default => 0);
         has verbosity              => (is => 'rw', default => 0);
         has dryRun                 => (is => 'rw', default => 0);
+        has wrapColumns            => (is => 'rw');
 
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
@@ -437,10 +443,46 @@ package My::Git::Graph2 {
 
         my @graphLines = $self->computeGraphLines();
 
+        my $totalColumns;
+
         foreach my $log (@{$self->commitLog}) {
             my $graphLine = shift(@graphLines);
             $graphLine //= $self->computeExtendedGraphLine();
-            print($graphLine . $log . "\n");
+
+            if (defined $self->wrapColumns && !$self->wrapColumns) {
+                # i.e., zero, as is the case when --wrap is specified without a number
+                if (!-t 1) {
+                    die("${PROGNAME}: not a tty: must specify number of columns for --wrap\n");
+                    exit(1);
+                }
+                my $wrapColumns = `tput cols`;
+                if ($wrapColumns !~ m{(\d+)}) {
+                    die("${PROGNAME}: could not get number of columns from terminal; must specify for --wrap\n");
+                    exit(1);
+                }
+                $wrapColumns = $1;
+                if ($wrapColumns < 32) {
+                    die("${PROGNAME}: must have at least 32 columns for --wrap\n");
+                    exit(1);
+                }
+                $self->wrapColumns($wrapColumns);
+            }
+
+            if ($self->wrapColumns) {
+                my $logColumns = $self->wrapColumns - length($graphLine);
+                if ($logColumns >= 32 && $log =~ m{\S}) {
+                    local $Text::Wrap::columns = $logColumns;
+                    my $logWrapped = Text::Wrap::wrap("", "    ", $log);
+                    my @logWrapped = split(m{\r?\n}, $logWrapped);
+                    foreach my $logLine (@logWrapped) {
+                        print($graphLine . $logLine . "\n");
+                    }
+                } else {
+                    print($graphLine . $log . "\n");
+                }
+            } else {
+                print($graphLine . $log . "\n");
+            }
         }
 
         foreach my $graphLine (@graphLines) {
