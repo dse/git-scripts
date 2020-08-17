@@ -133,6 +133,7 @@ package My::Git::Graph2 {
     use Data::Dumper qw(Dumper);
     use Storable qw(dclone);
     use Text::Wrap qw();
+    use List::Util qw(max);
     use Moo;
 
     INIT {
@@ -437,6 +438,7 @@ package My::Git::Graph2 {
     }
 
     sub finalizeWrapColumns {
+        my ($self) = @_;
         if (defined $self->wrapColumns && !$self->wrapColumns) {
             # i.e., zero, as is the case when --wrap is specified without a number
             if (!-t 1) {
@@ -460,33 +462,38 @@ package My::Git::Graph2 {
     sub printCommit {
         my ($self) = @_;
 
+        $self->finalizeWrapColumns();
         $self->computeColumns();
 
         my @graphLines = $self->computeGraphLines();
 
         my $totalColumns;
 
-        foreach my $log (@{$self->commitLog}) {
-            my $graphLine = shift(@graphLines);
-            $graphLine //= $self->computeExtendedGraphLine();
+        my $graphLineLength = max map { length $_ } @graphLines;
 
-            $self->finalizeWrapColumns();
-
-            if ($self->wrapColumns) {
-                my $logColumns = $self->wrapColumns - length($graphLine);
-                if ($logColumns >= 32 && $log =~ m{\S}) {
-                    local $Text::Wrap::columns = $logColumns;
+        my @log = @{$self->commitLog};
+        if ($self->wrapColumns) {
+            my $logColumns = $self->wrapColumns - $graphLineLength;
+            if ($logColumns >= 32) {
+                local $Text::Wrap::columns = $logColumns;
+                my @newLog;
+                foreach my $log (@log) {
+                    if ($log !~ m{\S}) {
+                        push(@newLog, $log);
+                        continue;
+                    }
                     my $logWrapped = Text::Wrap::wrap("", "    ", $log);
                     my @logWrapped = split(m{\r?\n}, $logWrapped);
-                    foreach my $logLine (@logWrapped) {
-                        print($graphLine . $logLine . "\n");
-                    }
-                } else {
-                    print($graphLine . $log . "\n");
+                    push(@newLog, @logWrapped);
                 }
-            } else {
-                print($graphLine . $log . "\n");
+                @log = @newLog;
             }
+        }
+
+        foreach my $log (@log) {
+            my $graphLine = shift(@graphLines);
+            $graphLine //= $self->computeExtendedGraphLine();
+            print($graphLine . $log . "\n");
         }
 
         foreach my $graphLine (@graphLines) {
