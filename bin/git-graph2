@@ -85,11 +85,16 @@ options:
         --ascii
     -n, --dry-run
     -h, --help
-        --show-parents
+        --show-parents          works like in 'git log'
         --abbrev
         --stdin
     -v, --verbose
-        --wrap[=<num>]
+        --wrap[=<num>]          wrap commit log messages
+to mark revisions in a revision range with 'A'/'B'/'C'/'D' instead of '*':
+        -A'<revision range>'
+        -B'<revision range>'
+        -C'<revision range>'
+        -D'<revision range>'
 options passed to git log:
         --abbrev[=<n>]
         --abbrev-commit
