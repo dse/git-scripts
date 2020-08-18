@@ -25,7 +25,6 @@ select(STDOUT);
 my $g2 = My::Git::Graph2::Style1->new();
 
 #------------------------------------------------------------------------------
-our $ascii;
 our $showParents;
 our $stdin;
 our $verbosity = 0;
@@ -36,7 +35,6 @@ our $wrapColumns;
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
-    'ascii'                => \$ascii,
     'parents|show-parents' => \$showParents,
     'stdin'                => \$stdin,
     'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
@@ -82,7 +80,6 @@ usage:
     git graph2 [<option> ...] [<revision-range>] [[--] <path> ...]
     git graph2 --stdin [<option> ...] [<filename> ...]
 options:
-        --ascii
     -n, --dry-run
     -h, --help
         --show-parents          works like in 'git log'
@@ -120,7 +117,6 @@ END
 ###############################################################################
 
 $g2->verbosity($verbosity);
-$g2->ascii($ascii);
 $g2->showParents($showParents);
 $g2->stdin($stdin);
 $g2->wrapColumns($wrapColumns) if defined $wrapColumns;
@@ -160,7 +156,6 @@ package My::Git::Graph2 {
         has gitLogOptions          => (is => 'rw', default => sub { return []; });
 
         # options
-        has ascii                  => (is => 'rw', default => 0);
         has showParents            => (is => 'rw', default => 0);
         has padding                => (is => 'rw', default => 32);
         has stdin                  => (is => 'rw', default => 0);
@@ -695,7 +690,6 @@ To run "git log" and display a graph in one step:
                [--abbrev[=<n>]]
                [--adog]
                [--all]
-               [--ascii]
                [--author-date-order]
                [--color[=<when>]]
                [--date-order]
@@ -767,10 +761,6 @@ mnemonic commonly used with "git log".
 
 Pretty much show commits for all branches, not just the current one.
 Same as in git-log(1), which see.
-
-=item --ascii
-
-Generates ASCII art instead of using Unicode line drawing characters.
 
 =item --author-date-order
 
