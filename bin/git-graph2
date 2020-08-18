@@ -35,10 +35,20 @@ our $wrapColumns;
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case');
 Getopt::Long::GetOptions(
+    # own options
     'parents|show-parents' => \$showParents,
     'stdin'                => \$stdin,
     'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
+    'adog' => sub {
+        push(
+            @{$g2->gitLogOptions},
+            '--all',
+            '--oneline',
+            '--decorate',
+        );
+    },
 
+    # revlist options
     'A=s'                  => sub { $g2->revList->{A} = { spec => $_[1] }; },
     'B=s'                  => sub { $g2->revList->{B} = { spec => $_[1] }; },
     'C=s'                  => sub { $g2->revList->{C} = { spec => $_[1] }; },
@@ -61,15 +71,7 @@ Getopt::Long::GetOptions(
     'topo-order'           => sub { $g2->getoptLongOption('--topo-order'); },
     'date=s'               => sub { $g2->getoptLongOption('--date', 'required', @_); },
 
-    'adog' => sub {
-        push(
-            @{$g2->gitLogOptions},
-            '--all',
-            '--oneline',
-            '--decorate',
-        );
-    },
-
+    # common options
     'v|verbose+'           => \$verbosity,
     'h|help'               => sub { usage(); exit(0); },
     'n|dry-run'            => \$dryRun,
@@ -815,6 +817,13 @@ Same as in git-log(1), which see.
 When specifying a custom format ("--pretty=format:..."), the format
 specification must start with '%h %p ' or '%H %P ' in order for
 git-graph2 to continue to work properly.
+
+=item --stdin
+
+Accept contents of standard input instead of running "git log".
+
+"git log" must be executed with the "--parents" option in order for
+this to work.
 
 =item --topo-order
 
