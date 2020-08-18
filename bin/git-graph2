@@ -617,6 +617,13 @@ package My::Git::Graph2::Style1 {
         }
         $result = sprintf('%-*s', $self->padding, $result);
         # any post-processing goes here
+
+        # my $start = $self->commitColumnNumber * 3;
+        # my $end   = length($result);
+        # for (my $i = $start + 2; $i < $end - 1; $i += 3) {
+        #     substr($result, $i, 1) =~ s{ }{-};
+        # }
+
         return $result;
     }
     sub computeAdditionalGraphLines {
