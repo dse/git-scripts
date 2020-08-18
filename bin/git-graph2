@@ -206,7 +206,7 @@ package My::Git::Graph2 {
 
     sub printRevListLegends {
         my ($self) = @_;
-        my $hasSomething = 0;
+        my $hasLegends = 0;
         foreach my $revListName (nsort keys %{$self->revList}) {
             my $spec = $self->revList->{$revListName}->{spec};
             my $count = scalar @{$self->revList->{$revListName}->{revList}};
@@ -218,12 +218,10 @@ package My::Git::Graph2 {
                 my ($r1, $r2) = ($1, $2);
                 $parenthetical = sprintf(" (commits in %s but not in %s)", $r2, $r1);
             }
-
-            printf("%-4s = %-32s   %4d revisions%s\n", $revListName, $spec, $count, $parenthetical);
-
-            $hasSomething = 1;
+            printf("%s = %s, %d revisions%s\n", $revListName, $spec, $count, $parenthetical);
+            $hasLegends = 1;
         }
-        if ($hasSomething) {
+        if ($hasLegends) {
             print("\n");
         }
     }
