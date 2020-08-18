@@ -79,7 +79,7 @@ Getopt::Long::GetOptions(
 
 sub usage { print(<<"END"); }
 usage:
-    git graph2 [<option> ...] [<revision range>] [[--] <path> ...]
+    git graph2 [<option> ...] [<revision-range>] [[--] <path> ...]
     git graph2 --stdin [<option> ...] [<filename> ...]
 options:
         --ascii
@@ -91,10 +91,10 @@ options:
     -v, --verbose
         --wrap[=<num>]          wrap commit log messages
 to mark revisions in a revision range with 'A'/'B'/'C'/'D' instead of '*':
-        -A'<revision range>'
-        -B'<revision range>'
-        -C'<revision range>'
-        -D'<revision range>'
+    -A, --A='<revision-range>'
+    -B, --B='<revision-range>'
+    -C, --C='<revision-range>'
+    -D, --D='<revision-range>'
 options passed to git log:
         --abbrev[=<n>]
         --abbrev-commit
@@ -687,26 +687,31 @@ git graph2 --- a "git log --graph" alternative without diagonals.
 
 To run "git log" and display a graph in one step:
 
-    git graph2 [--ascii]
-               [--parents|--show-parents]
-               [--abbrev[=<n>]]
+    git graph2 [-A<revision-range>]
+               [-B<revision-range>]
+               [-C<revision-range>]
+               [-D<revision-range>]
                [--abbrev-commit]
-               [--no-abbrev-commit]
+               [--abbrev[=<n>]]
+               [--adog]
                [--all]
+               [--ascii]
                [--author-date-order]
+               [--color[=<when>]]
                [--date-order]
                [--decorate[=<short|full|auto|no>]]
-               [--name-status]
-               [--oneline|--one-line]
-               [--pretty[=<format>]]
-               [--topo-order]
-               [--color[=<when>]]
+               [--dry-run]
                [--exclude[=<exclude>]]
                [--graph]
-               [--adog]
+               [--name-status]
+               [--no-abbrev-commit]
+               [--oneline|--one-line]
+               [--parents|--show-parents]
+               [--pretty[=<format>]]
+               [--topo-order]
                [--verbose]
-               [--dry-run]
-               [<revision range>] [[--] <path> ...]
+               [--wrap[=<num>]]
+               [<revision-range>] [[--] <path> ...]
 
 To read "git log" output from another source (must be from running
 "git log --parents"):
@@ -730,6 +735,17 @@ notably without all those diagonals.
 
 =over 4
 
+=item -A, --A=E<lt>revision-rangeE<gt>
+
+=item -B, --B=E<lt>revision-rangeE<gt>
+
+=item -C, --C=E<lt>revision-rangeE<gt>
+
+=item -D, --D=E<lt>revision-rangeE<gt>
+
+Indicate revisions within a specified revision range with 'A' through
+'D' in the graph instead of '*'.
+
 =item --abbrev[=<n>]
 
 Show partial prefixes of commitids.  Same as in git-log(1), which see.
@@ -744,7 +760,8 @@ Show full 40-byte commitids.  Same as in git-log(1), which see.
 
 =item --adog
 
-Short for "--all --decorate --oneline --graph", or the "a dog" mnemonic.
+Short for "--all --decorate --oneline --graph", or the "a dog"
+mnemonic commonly used with "git log".
 
 =item --all
 
@@ -817,6 +834,15 @@ lines of history.  Same as in git-log(1), which see.
 =item -v, --verbose
 
 Increase output level.
+
+=item --wrap
+
+Wrap output to as many columns as the terminal is wide if possible.
+
+=item --wrap=<num>
+
+Wrap output to the specified number of columns.  If <num> is zero,
+use the width of the terminal if possible.
 
 =back
 
