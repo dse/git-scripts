@@ -335,17 +335,26 @@ package My::Git::Graph2 {
 
         my $commit;
 
-        if ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
+        if ($line =~ s{^\s*([[:xdigit:]]{7,})\s*}{}) {
+            if ($self->verbosity >= 2) {
+                printf STDERR ("git-graph2: parseLine: STARTS COMMIT: $line\n");
+            }
             $commit = $1;
-        } elsif ($line =~ s{^\s*commit\s+([[:xdigit:]]{8,})\s*}{}) {
+        } elsif ($line =~ s{^\s*commit\s+([[:xdigit:]]{7,})\s*}{}) {
+            if ($self->verbosity >= 2) {
+                printf STDERR ("git-graph2: parseLine: STARTS COMMIT: $line\n");
+            }
             $commit = $1;
         } else {
+            if ($self->verbosity >= 3) {
+                printf STDERR ("git-graph2: parseLine: DOES NOT START COMMIT: $line\n");
+            }
             push(@{$self->commitLog}, $origLine);
             return;
         }
 
         my @parents;
-        while ($line =~ s{^\s*([[:xdigit:]]{8,})\s*}{}) {
+        while ($line =~ s{^\s*([[:xdigit:]]{7,})\s*}{}) {
             my $parent = $1;
             push(@parents, $parent);
         }
