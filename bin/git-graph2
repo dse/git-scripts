@@ -255,6 +255,23 @@ package My::Git::Graph2 {
         return;
     }
 
+    sub whichRevListsHave {
+        my ($self, $commit) = @_;
+        my @result;
+        foreach my $revListName (nsort keys %{$self->revList}) {
+            if ($self->revListHas($revListName, $commit)) {
+                push(@result, $revListName);
+            }
+        }
+        if (wantarray) {
+            return @result;
+        }
+        if (scalar @result) {
+            return join('', nsort @result);
+        }
+        return;
+    }
+
     sub whichRevListHas {
         my ($self, $commit) = @_;
         foreach my $revListName (nsort keys %{$self->revList}) {
@@ -665,9 +682,9 @@ package My::Git::Graph2::Style1 {
         my ($self) = @_;
         my $result = ' ' x (3 * scalar @{$self->columns});
 
-        my $char = $self->whichRevListHas($self->commit) // '*';
+        my $char = $self->whichRevListsHave($self->commit) // '*';
 
-        substr($result, $self->commitColumnNumber * 3, 1) = $char;
+        substr($result, $self->commitColumnNumber * 3, length($char)) = $char;
         foreach my $i ($self->computeOtherActiveColumnNumbers) {
             substr($result, $i * 3, 1) = '|';
         }
