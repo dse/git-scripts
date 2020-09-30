@@ -39,6 +39,9 @@ Getopt::Long::GetOptions(
     'parents|show-parents' => \$showParents,
     'stdin'                => \$stdin,
     'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
+    'mark-merges'          => sub { $g2->markMerges('mark'); },
+    'hide-merges'          => sub { $g2->markMerges('hide'); },
+
     'adog' => sub {
         push(
             @{$g2->gitLogOptions},
@@ -70,6 +73,7 @@ Getopt::Long::GetOptions(
     'pretty:s'             => sub { $g2->getoptLongOption('--pretty', 'optional', @_); },
     'topo-order'           => sub { $g2->getoptLongOption('--topo-order'); },
     'date=s'               => sub { $g2->getoptLongOption('--date', 'required', @_); },
+    # NOTE: specifying --no-merges breaks the graph.
 
     # common options
     'v|verbose+'           => \$verbosity,
@@ -89,6 +93,7 @@ options:
         --stdin
     -v, --verbose
         --wrap[=<num>]          wrap commit log messages
+        --mark-merges
 to mark revisions in a revision range with 'A'/'B'/'C'/'D' instead of '*':
     -A, --A='<revision-range>'
     -B, --B='<revision-range>'
@@ -165,7 +170,10 @@ package My::Git::Graph2 {
         has verbosity              => (is => 'rw', default => 0);
         has dryRun                 => (is => 'rw', default => 0);
         has wrapColumns            => (is => 'rw');
-        has revList                => (is => 'rw', default => sub { return {}; });
+        has markMerges             => (is => 'rw');
+
+        # mark certain revlists
+        has revList => (is => 'rw', default => sub { return {}; });
 
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
@@ -540,11 +548,35 @@ package My::Git::Graph2 {
         }
     }
 
+    sub markMerge {
+        my ($self) = @_;
+
+        if (!$self->markMerges) {
+            return;
+        }
+        if (scalar @{$self->parents} < 2) {
+            return;
+        }
+
+        if (!scalar @{$self->commitLog}) {
+            push(@{$self->commitLog}, '');
+        }
+
+        if ($self->markMerges eq 'mark') {
+            $self->commitLog->[0] =~ s{\s+$}{};
+            $self->commitLog->[0] .= ' [MERGE]';
+        } elsif ($self->markMerges eq 'hide') {
+            $self->commitLog->[0] = '[MERGE]';
+        }
+
+    }
+
     sub printCommit {
         my ($self) = @_;
 
         $self->finalizeWrapColumns();
         $self->computeColumns();
+        $self->markMerge();
 
         my @graphLines = $self->computeGraphLines();
 
