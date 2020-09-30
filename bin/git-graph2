@@ -908,6 +908,16 @@ use the width of the terminal if possible.
 
 =back
 
+=head1 BUGS
+
+=over 4
+
+=item *
+
+Commit ids must be at least 7 hex digits long.
+
+=back
+
 =head1 AUTHOR
 
 Darren Embry (dse@webonastick.com)
