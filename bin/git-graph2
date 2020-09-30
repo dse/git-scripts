@@ -123,16 +123,15 @@ END
 
 ###############################################################################
 
+use String::ShellQuote qw(shell_quote);
+
 $g2->verbosity($verbosity);
 $g2->showParents($showParents);
 $g2->stdin($stdin);
 $g2->wrapColumns($wrapColumns) if defined $wrapColumns;
 
-if ($g2->verbosity || $g2->dryRun) {
-    say(scalar($g2->getGitCommand(@ARGV)));
-}
-
 if ($g2->dryRun) {
+    printf STDERR ("+ %s\n", shell_quote($g2->getGitLogCommand(@ARGV)));
     exit(0);
 }
 
@@ -196,7 +195,12 @@ package My::Git::Graph2 {
         foreach my $revListName (keys %{$self->revList}) {
             my $spec = $self->revList->{$revListName}->{spec};
             my $ph;
-            if (!open($ph, '-|', 'git', 'rev-list', $spec)) {
+            my @cmd = $self->getGitRevListCommand($spec);
+            if ($self->verbosity >= 1) {
+                printf STDERR ("+ %s\n", shell_quote(@cmd));
+            }
+            if (!open($ph, '-|', @cmd)) {
+                warn("failed to open pipe to git rev-list: $!\n");
                 next revList;
             }
             my @revList;
@@ -296,10 +300,12 @@ package My::Git::Graph2 {
         my ($self, @args) = @_;
         $self->initialize();
         my $ph;
-        if (!open($ph, '-|', 'git', 'log', '--parents',
-                  @{$self->gitLogOptions},
-                  @args)) {
-            warn("failed to open pipe to git: $!\n");
+        my @cmd = $self->getGitLogCommand(@args);
+        if ($self->verbosity >= 1) {
+            printf STDERR ("+ %s\n", shell_quote(@cmd));
+        }
+        if (!open($ph, '-|', @cmd)) {
+            warn("failed to open pipe to git log: $!\n");
             return;
         }
         $self->runFileHandle($ph);
@@ -616,12 +622,23 @@ package My::Git::Graph2 {
         $self->cleanupColumns();
     }
 
-    sub getGitCommand {
+    sub getGitLogCommand {
         my ($self, @args) = @_;
         my @cmd = (
             'git', 'log', '--parents',
             @{$self->gitLogOptions},
             @args
+        );
+        if (wantarray) {
+            return @cmd;
+        }
+        return shell_quote(@cmd);
+    }
+
+    sub getGitRevListCommand {
+        my ($self, $spec) = @_;
+        my @cmd = (
+            'git', 'rev-list', $spec
         );
         if (wantarray) {
             return @cmd;
