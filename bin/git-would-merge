@@ -1,57 +1,80 @@
 #!/usr/bin/env bash
+#
+# git-would-merge --- utility to output contents of the base branch,
+# our branch, and their branch, in preparation for a merge.
+#
 set -o errexit
 set -o nounset
 set -o pipefail
 
-if (( $# < 2 )) ; then
-    >&2 echo "usage: git-would-merge <branch> <file> ..."
-    exit 1
-fi
+main () {
+    if (( $# < 2 )) ; then
+        >&2 echo "usage: git-would-merge <branch> <file> ..."
+        exit 1
+    fi
 
-branch="$1"
-shift
+    branch="$1"
+    shift
 
-mergeBase="$(git merge-base HEAD "$branch")"
-echo "$mergeBase"
+    mergeBase="$(git merge-base HEAD "${branch}")"
 
-for filename ; do
-    dirname="$(dirname "$filename")"
-    basename="$(basename "$filename")"
-    case "${basename}" in
-        .*.*)
-            basebasename="${basename%.*}"
-            ext=".${basename##*.}"
-            ;;
-        .*)
-            basebasename="${basename}"
-            ext=""
-            ;;
-        *.*)
-            basebasename="${basename%.*}"
-            ext=".${basename##*.}"
-            ;;
-        *)
-            basebasename="${basename}"
-            ext=""
-            ;;
-    esac
-    base="${dirname}/${basebasename}--BASE${ext}"
-    ours="${dirname}/${basebasename}--OURS${ext}"
-    theirs="${dirname}/${basebasename}--THEIRS${ext}"
+    if [[ "${mergeBase}" = "" ]] ; then
+        >&2 echo "git-would-merge: cannot find merge base"
+        exit 1
+    fi
 
-    echo "-   $filename"
-    echo "    $base"
-    echo "    $ours"
-    echo "    $theirs"
+    for filename in "${@}" ; do
+        dirname="$(dirname "${filename}")"
+        basename="$(basename "${filename}")"
+        case "${basename}" in
+            .*.*)
+                basebasename="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+            .*)
+                basebasename="${basename}"
+                ext=""
+                ;;
+            *.*)
+                basebasename="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+            *)
+                basebasename="${basename}"
+                ext=""
+                ;;
+        esac
+        base="${dirname}/${basebasename}--BASE${ext}"
+        ours="${dirname}/${basebasename}--OURS${ext}"
+        theirs="${dirname}/${basebasename}--THEIRS${ext}"
 
-    case "${filename}" in
-        ./*)     gitfilename="${filename}"   ;;
-        ../*)    gitfilename="${filename}"   ;;
-        /*)      gitfilename="${filename}"   ;;
-        *)       gitfilename="./${filename}" ;;
-    esac
+        case "${filename}" in
+            ./*)     gitfilename="${filename}"   ;;
+            ../*)    gitfilename="${filename}"   ;;
+            /*)      gitfilename="${filename}"   ;;
+            *)       gitfilename="./${filename}" ;;
+        esac
 
-    git show "HEAD:${gitfilename}"         >"${ours}"
-    git show "${branch}:${gitfilename}"    >"${theirs}"
-    git show "${mergeBase}:${gitfilename}" >"${base}"
-done
+        git show "HEAD:${gitfilename}"         >"${ours}.tmp"
+        git show "${branch}:${gitfilename}"    >"${theirs}.tmp"
+        git show "${mergeBase}:${gitfilename}" >"${base}.tmp"
+
+        mv "${ours}.tmp"   "${ours}"
+        mv "${theirs}.tmp" "${theirs}"
+        mv "${base}.tmp"   "${base}"
+
+        echo "Wrote the following files:"
+        echo "    ${base}"
+        echo "    ${ours}"
+        echo "    ${theirs}"
+    done
+}
+
+at_exit () {
+    [[ -n "${ours}"   ]] && [[ -e "${ours}.tmp"   ]] && { rm "${ours}.tmp"   || true; }
+    [[ -n "${theirs}" ]] && [[ -e "${theirs}.tmp" ]] && { rm "${theirs}.tmp" || true; }
+    [[ -n "${base}"   ]] && [[ -e "${base}.tmp"   ]] && { rm "${base}.tmp"   || true; }
+}
+
+###############################################################################
+main "$@"
