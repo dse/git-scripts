@@ -8,13 +8,20 @@ set -o nounset
 set -o pipefail
 
 main () {
-    if (( $# < 2 )) ; then
-        >&2 echo "usage: git-would-merge <branch> <file> ..."
+    if (( $# < 1 )) ; then
+        >&2 echo "usage: git-would-merge <file> ..."
         exit 1
     fi
 
-    branch="$1"
-    shift
+    # top level project directory
+    root="$(git rev-parse --show-toplevel)"
+
+    # make sure the files we created are ignored by git
+    exclude="${root}/.git/info/exclude"
+    grep -F -x '*--BASE*'   "${exclude}" >/dev/null 2>/dev/null || echo '*--BASE*'   >>"${exclude}"
+    grep -F -x '*--OURS*'   "${exclude}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${exclude}"
+    grep -F -x '*--THEIRS*' "${exclude}" >/dev/null 2>/dev/null || echo '*--THEIRS*' >>"${exclude}"
+    grep -F -x '*.tmp'      "${exclude}" >/dev/null 2>/dev/null || echo '*.tmp'      >>"${exclude}"
 
     for filename in "${@}" ; do
         dirname="$(dirname "${filename}")"
@@ -65,19 +72,13 @@ main () {
         mv "${theirs}.tmp" "${theirs}"
         mv "${base}.tmp"   "${base}"
 
-        git diff -w --no-index             "${base}" "${ours}" >"${baseOurs}.diff" || true
+        git diff -w --no-index             "${base}" "${ours}"   >"${baseOurs}.diff" || true
         git diff -w --no-index             "${base}" "${theirs}" >"${baseTheirs}.diff" || true
-        git diff -w --no-index --word-diff "${base}" "${ours}" >"${baseOurs}.wdiff" || true
+        git diff -w --no-index --word-diff "${base}" "${ours}"   >"${baseOurs}.wdiff" || true
         git diff -w --no-index --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
 
         echo "Wrote the following files:"
-        echo "    ${base}"
-        echo "    ${ours}"
-        echo "    ${theirs}"
-        echo "    ${baseOurs}.diff"
-        echo "    ${baseTheirs}.diff"
-        echo "    ${baseOurs}.wdiff"
-        echo "    ${baseTheirs}.wdiff"
+        /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff"
     done
 }
 
