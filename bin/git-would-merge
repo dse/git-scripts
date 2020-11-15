@@ -44,9 +44,13 @@ main () {
                 ext=""
                 ;;
         esac
+
         base="${dirname}/${basebasename}--BASE${ext}"
         ours="${dirname}/${basebasename}--OURS${ext}"
         theirs="${dirname}/${basebasename}--THEIRS${ext}"
+
+        baseOurs="${dirname}/${basebasename}--BASE--OURS${ext}"
+        baseTheirs="${dirname}/${basebasename}--BASE--THEIRS${ext}"
 
         case "${filename}" in
             ./*)     gitfilename="${filename}"   ;;
@@ -63,10 +67,19 @@ main () {
         mv "${theirs}.tmp" "${theirs}"
         mv "${base}.tmp"   "${base}"
 
+        git diff -w --no-index             "${base}" "${ours}" >"${baseOurs}.diff" || true
+        git diff -w --no-index             "${base}" "${theirs}" >"${baseTheirs}.diff" || true
+        git diff -w --no-index --word-diff "${base}" "${ours}" >"${baseOurs}.wdiff" || true
+        git diff -w --no-index --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
+
         echo "Wrote the following files:"
         echo "    ${base}"
         echo "    ${ours}"
         echo "    ${theirs}"
+        echo "    ${baseOurs}.diff"
+        echo "    ${baseTheirs}.diff"
+        echo "    ${baseOurs}.wdiff"
+        echo "    ${baseTheirs}.wdiff"
     done
 }
 
