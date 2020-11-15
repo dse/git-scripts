@@ -16,13 +16,6 @@ main () {
     branch="$1"
     shift
 
-    mergeBase="$(git merge-base HEAD "${branch}")"
-
-    if [[ "${mergeBase}" = "" ]] ; then
-        >&2 echo "git-would-merge: cannot find merge base"
-        exit 1
-    fi
-
     for filename in "${@}" ; do
         dirname="$(dirname "${filename}")"
         basename="$(basename "${filename}")"
@@ -55,9 +48,14 @@ main () {
             *)       gitfilename="./${filename}" ;;
         esac
 
-        git show "HEAD:${gitfilename}"         >"${ours}.tmp"
-        git show "${branch}:${gitfilename}"    >"${theirs}.tmp"
-        git show "${mergeBase}:${gitfilename}" >"${base}.tmp"
+        # :0: => stage 0 entry
+        # :1: => common ancestor
+        # :2: => our branch   a/k/a target branch
+        # :3: => their branch a/k/a branch from which we're merging
+
+        git show ":2:${gitfilename}" >"${ours}.tmp"
+        git show ":3:${gitfilename}" >"${theirs}.tmp"
+        git show ":1:${gitfilename}" >"${base}.tmp"
 
         mv "${ours}.tmp"   "${ours}"
         mv "${theirs}.tmp" "${theirs}"
