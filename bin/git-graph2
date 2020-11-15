@@ -41,6 +41,7 @@ Getopt::Long::GetOptions(
     'wrap:i'               => sub { $wrapColumns = defined $_[1] ? $_[1] : 0; },
     'mark-merges'          => sub { $g2->markMerges('mark'); },
     'hide-merges'          => sub { $g2->markMerges('hide'); },
+    'mark-branches-off=s'  => sub { push(@{$g2->markBranchesOff}, $_[1]); },
 
     'adog' => sub {
         push(
@@ -146,7 +147,7 @@ package My::Git::Graph2 {
     use Data::Dumper qw(Dumper);
     use Storable qw(dclone);
     use Text::Wrap qw();
-    use List::Util qw(max);
+    use List::Util qw(min max);
     use Moo;
 
     INIT {
@@ -171,8 +172,15 @@ package My::Git::Graph2 {
         has wrapColumns            => (is => 'rw');
         has markMerges             => (is => 'rw');
 
+        has markBranchesOff        => (is => 'rw', default => sub { return []; }); # supplied on cmdline
+        has markBranchesOffCommits => (is => 'rw', default => sub { return []; }); # converted to commitids
+
         # mark certain revlists
         has revList => (is => 'rw', default => sub { return {}; });
+
+        # mark certain revs
+        has longRevs  => (is => 'rw', default => sub { return {}; });
+        has shortRevs => (is => 'rw', default => sub { return {}; });
 
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
@@ -181,6 +189,7 @@ package My::Git::Graph2 {
 
     sub run {
         my ($self, @args) = @_;
+        $self->collectRevs();
         $self->collectRevLists();
         $self->printRevListLegends();
         if ($self->stdin) {
@@ -188,6 +197,56 @@ package My::Git::Graph2 {
         } else {
             $self->runGit(@args);
         }
+    }
+
+    sub collectRevs {
+        my ($self) = @_;
+        foreach my $rev (@{$self->markBranchesOff}) {
+            my $commitid1 = $self->getShortRev($rev);
+            my $commitid2 = $self->getLongRev($rev);
+            push(@{$self->markBranchesOffCommits}, $commitid1) if defined $commitid1;
+            push(@{$self->markBranchesOffCommits}, $commitid2) if defined $commitid2;
+        }
+    }
+
+    sub getShortRev {
+        my ($self, $ref) = @_;
+        return $self->shortRevs->{$ref} if exists $self->shortRevs->{$ref};
+        my $rev = $self->getRev($ref, 1);
+        return unless defined $rev;
+        $self->shortRevs->{$ref} = $rev;
+        return $rev;
+    }
+
+    sub getLongRev {
+        my ($self, $ref) = @_;
+        return $self->longRevs->{$ref} if exists $self->longRevs->{$ref};
+        my $rev = $self->getRev($ref, 0);
+        return unless defined $rev;
+        $self->longRevs->{$ref} = $rev;
+        return $rev;
+    }
+
+    sub getRev {
+        my ($self, $ref, $short) = @_;
+        my @cmd;
+        if ($short) {
+            @cmd = ('git', 'rev-parse', '--short', $ref);
+        } else {
+            @cmd = ('git', 'rev-parse', $ref);
+        }
+        if ($self->verbosity >= 1) {
+            printf STDERR ("+ %s\n", shell_quote(@cmd));
+        }
+        my $ph;
+        if (!open($ph, '-|', @cmd)) {
+            warn("failed to open pipe for git rev-parse: $!\n");
+            return;
+        }
+        my $commitid = <$ph>;
+        return unless defined $commitid;
+        $commitid =~ s{\R\z}{};
+        return $commitid;
     }
 
     sub collectRevLists {
@@ -600,7 +659,53 @@ package My::Git::Graph2 {
         } elsif ($self->markMerges eq 'hide') {
             $self->commitLog->[0] = '[MERGE]';
         }
+    }
 
+    sub markBranchOff {
+        my ($self) = @_;
+        return unless $self->willMarkBranchOff();
+        if (!scalar @{$self->commitLog}) {
+            push(@{$self->commitLog}, '');
+        }
+        $self->commitLog->[0] =~ s{\s+$}{};
+        $self->commitLog->[0] .= ' [CHILD]';
+    }
+
+    sub willMarkBranchOff {
+        my ($self) = @_;
+        if (!scalar @{$self->markBranchesOff}) {
+            return 0;
+        }
+
+        foreach my $markOffCommit (@{$self->markBranchesOffCommits}) {
+            my $columnNumber = $self->columnNumbers->{$markOffCommit};
+            next unless defined $columnNumber;
+            if ($columnNumber == $self->commitColumnNumber) {
+                return 0;
+            }
+        }
+
+        foreach my $markOffCommit (@{$self->markBranchesOffCommits}) {
+            my $len1 = length $markOffCommit;
+            foreach my $parent (@{$self->parents}) {
+                my $len2 = length $parent;
+                my $len = min($len1, $len2);
+                if (substr($markOffCommit, 0, $len) eq substr($parent, 0, $len)) {
+                    return 1;
+                }
+            }
+
+            my $column1 = $self->columnNumbers->{$markOffCommit};
+            next unless defined $column1;
+            foreach my $parent (@{$self->parents}) {
+                my $column2 = $self->columnNumbers->{$parent};
+                next if !defined $column2;
+                if ($column1 == $column2) {
+                    return 1;
+                }
+            }
+        }
+        return 0;
     }
 
     sub printCommit {
@@ -609,6 +714,7 @@ package My::Git::Graph2 {
         $self->finalizeWrapColumns();
         $self->computeColumns();
         $self->markMerge();
+        $self->markBranchOff();
 
         my @graphLines = $self->computeGraphLines();
 
