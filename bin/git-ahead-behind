@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+if (( ! $# )) ; then
+    git status --short --branch
+else
+    git status --short --branch "$@"
+fi
