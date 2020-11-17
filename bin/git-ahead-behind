@@ -3,6 +3,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# h/t https://stackoverflow.com/questions/20433867/git-ahead-behind-info-between-master-and-branch
+
 if (( ! $# )) ; then
     git status --short --branch
 else
