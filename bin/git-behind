@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+if (( ! $# )) ; then
+    git rev-list --right-only --count master...origin/master
+else
+    git rev-list --right-only --count "$@"
+fi
