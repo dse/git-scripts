@@ -6,6 +6,7 @@
 set -o errexit
 set -o nounset
 set -o pipefail
+# set -o xtrace
 
 main () {
     if (( $# < 1 )) ; then
@@ -15,6 +16,19 @@ main () {
 
     # top level project directory
     root="$(git rev-parse --show-toplevel)"
+
+    if [[ ! -e "${root}/.git/ORIG_HEAD" ]] ; then
+        >&2 echo "not merging"
+        exit 1
+    fi
+    if [[ ! -e "${root}/.git/MERGE_HEAD" ]] ; then
+        >&2 echo "not merging"
+        exit 1
+    fi
+
+    origHead="$(cat "${root}/.git/ORIG_HEAD")"
+    mergeHead="$(cat "${root}/.git/MERGE_HEAD")"
+    mergeBase="$(git merge-base "${origHead}" "${mergeHead}")"
 
     # make sure the files we created are ignored by git
     exclude="${root}/.git/info/exclude"
@@ -52,6 +66,14 @@ main () {
         baseOurs="${dirname}/${basebasename}--BASE--OURS${ext}"
         baseTheirs="${dirname}/${basebasename}--BASE--THEIRS${ext}"
 
+        ( rm "${ours}" || true
+          rm "${theirs}" || true
+          rm "${base}" || true
+          rm "${baseOurs}.diff" || true
+          rm "${baseTheirs}.diff" || true
+          rm "${baseOurs}.wdiff" || true
+          rm "${baseTheirs}.wdiff" || true ) >/dev/null 2>/dev/null
+
         case "${filename}" in
             ./*)     gitfilename="${filename}"   ;;
             ../*)    gitfilename="${filename}"   ;;
@@ -64,28 +86,55 @@ main () {
         # :2: => our branch   a/k/a target branch
         # :3: => their branch a/k/a branch from which we're merging
 
-        git show ":2:${gitfilename}" >"${ours}.tmp"
-        git show ":3:${gitfilename}" >"${theirs}.tmp"
-        git show ":1:${gitfilename}" >"${base}.tmp"
+        # nested conflicts?
+        # git show ":2:${gitfilename}" >"${ours}.tmp"
+        # git show ":3:${gitfilename}" >"${theirs}.tmp"
+        # git show ":1:${gitfilename}" >"${base}.tmp"
+
+        # shitload o' diffs?
+        git show "${origHead}:${gitfilename}" >"${ours}.tmp"
+        git show "${mergeHead}:${gitfilename}" >"${theirs}.tmp"
+        git show "${mergeBase}:${gitfilename}" >"${base}.tmp"
 
         mv "${ours}.tmp"   "${ours}"
         mv "${theirs}.tmp" "${theirs}"
         mv "${base}.tmp"   "${base}"
 
-        git diff -w --no-index             "${base}" "${ours}"   >"${baseOurs}.diff" || true
-        git diff -w --no-index             "${base}" "${theirs}" >"${baseTheirs}.diff" || true
-        git diff -w --no-index --word-diff "${base}" "${ours}"   >"${baseOurs}.wdiff" || true
-        git diff -w --no-index --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
+        diff -u --strip-trailing-cr -B -b -w "${base}" "${ours}"   >"${baseOurs}.diff" || true
+        diff -u --strip-trailing-cr -B -b -w "${base}" "${theirs}" >"${baseTheirs}.diff" || true
+        # diff -b -w --word-diff "${base}" "${ours}"   >"${baseOurs}.wdiff" || true
+        # diff -b -w --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
 
-        echo "Wrote the following files:"
-        /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff"
+        git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${mergeHead}..${origHead}" -- "${gitfilename}" >"${ours}.log"
+        git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${origHead}..${mergeHead}" -- "${gitfilename}" >"${theirs}.log"
+
+        echo "${filename}"
+        echo "    orig head is $origHead"
+        echo "    merge head is $mergeHead"
+        echo "    merge base is $mergeBase"
+        echo "    Wrote the following files:"
+        /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${ours}.log" "${theirs}.log" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff" 2>/dev/null | sed 's/^/    /'
+
+        local noConflicts=1
+
+        local i
+        for i in "${ours}" "${theirs}" "${base}" ; do
+            if grep -e '^<<<<<<< ' -e '^======= ' -e '^>>>>>>> ' -e '^<<<<<<<<< ' -e '^========= ' -e '^>>>>>>>>> ' "${ours}" >/dev/null 2>/dev/null ; then
+                noConflicts=0
+                echo "    :-( ${i} itself appears to contain merge conflicts."
+            fi
+        done
+
+        if (( noConflicts )) ; then
+            echo "    :-) No merge conflicts in any of the files being merged."
+        fi
     done
 }
 
 at_exit () {
-    [[ -n "${ours}"   ]] && [[ -e "${ours}.tmp"   ]] && { rm "${ours}.tmp"   || true; }
-    [[ -n "${theirs}" ]] && [[ -e "${theirs}.tmp" ]] && { rm "${theirs}.tmp" || true; }
-    [[ -n "${base}"   ]] && [[ -e "${base}.tmp"   ]] && { rm "${base}.tmp"   || true; }
+    [[ -n "${ours}"   ]] && [[ -e "${ours}.tmp"   ]] && { rm "${ours}.tmp"   >/dev/null 2>/dev/null || true; }
+    [[ -n "${theirs}" ]] && [[ -e "${theirs}.tmp" ]] && { rm "${theirs}.tmp" >/dev/null 2>/dev/null || true; }
+    [[ -n "${base}"   ]] && [[ -e "${base}.tmp"   ]] && { rm "${base}.tmp"   >/dev/null 2>/dev/null || true; }
 }
 
 ###############################################################################
