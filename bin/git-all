@@ -307,7 +307,7 @@ package My::Git::Porcelain::All {
         local $_ = $line;
         s{\R\z}{};
         if ($self->inline) {
-            print STDERR color('green') if isVT(2);
+            print STDERR color('red') if isVT(2);
             print STDERR $self->inlinePrefix;
             print STDERR color('reset') if isVT(2);
             print STDERR $self->inlineSeparator if defined $self->inlineSeparator;
