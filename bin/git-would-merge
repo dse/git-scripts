@@ -6,37 +6,56 @@
 set -o errexit
 set -o nounset
 set -o pipefail
+shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
 # set -o xtrace
 
 main () {
-    if (( $# < 1 )) ; then
-        >&2 echo "usage: git-would-merge <file> ..."
-        exit 1
-    fi
-
     # top level project directory
-    root="$(git rev-parse --show-toplevel)"
+    local root="$(git rev-parse --show-toplevel)"
 
     if [[ ! -e "${root}/.git/ORIG_HEAD" ]] ; then
         >&2 echo "not merging"
         exit 1
     fi
-    if [[ ! -e "${root}/.git/MERGE_HEAD" ]] ; then
-        >&2 echo "not merging"
+
+    local isMerging=0
+    [[ -e "${root}/.git/MERGE_HEAD" ]] && isMerging=1
+
+    if (( !isMerging )) ; then
+        >&2 echo "git-would-merge: not merging."
         exit 1
     fi
 
-    origHead="$(cat "${root}/.git/ORIG_HEAD")"
-    mergeHead="$(cat "${root}/.git/MERGE_HEAD")"
-    mergeBase="$(git merge-base "${origHead}" "${mergeHead}")"
+    local origHead="$(cat "${root}/.git/ORIG_HEAD")"
+    local mergeHead="$(cat "${root}/.git/MERGE_HEAD")"
+    local mergeBase="$(git merge-base "${origHead}" "${mergeHead}")"
 
     # make sure the files we created are ignored by git
-    exclude="${root}/.git/info/exclude"
-    grep -F -x '*--BASE*'   "${exclude}" >/dev/null 2>/dev/null || echo '*--BASE*'   >>"${exclude}"
-    grep -F -x '*--OURS*'   "${exclude}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${exclude}"
-    grep -F -x '*--THEIRS*' "${exclude}" >/dev/null 2>/dev/null || echo '*--THEIRS*' >>"${exclude}"
-    grep -F -x '*.tmp'      "${exclude}" >/dev/null 2>/dev/null || echo '*.tmp'      >>"${exclude}"
+    local excludeFile="${root}/.git/info/exclude"
+    grep -F -x '*--BASE*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--BASE*'   >>"${excludeFile}"
+    grep -F -x '*--OURS*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${excludeFile}"
+    grep -F -x '*--THEIRS*' "${excludeFile}" >/dev/null 2>/dev/null || echo '*--THEIRS*' >>"${excludeFile}"
+    grep -F -x '*.tmp'      "${excludeFile}" >/dev/null 2>/dev/null || echo '*.tmp'      >>"${excludeFile}"
 
+    local filename=""
+    local -a filenames=()
+    if (( $# )) ; then
+        for filename in "${@}" ; do
+            would-merge "${filename}"
+        done
+    else
+        git diff --name-only --diff-filter=U | mapfile -t filenames
+        if (( ! ${#filenames[@]} )) ; then
+            >&2 echo "no files with conflicts."
+            exit 0
+        fi
+        for filename in "${filenames[@]}" ; do
+            would-merge "${filename}"
+        done
+    fi
+}
+
+would-merge () {
     for filename in "${@}" ; do
         dirname="$(dirname "${filename}")"
         basename="$(basename "${filename}")"
