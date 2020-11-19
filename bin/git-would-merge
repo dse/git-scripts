@@ -13,6 +13,11 @@ main () {
     # top level project directory
     local root="$(git rev-parse --show-toplevel)"
 
+    if [[ "$1" == "clean" ]] ; then
+        clean
+        exit 0
+    fi
+
     if [[ ! -e "${root}/.git/ORIG_HEAD" ]] ; then
         >&2 echo "not merging"
         exit 1
@@ -148,6 +153,16 @@ would-merge () {
             echo "    :-) No merge conflicts in any of the files being merged."
         fi
     done
+}
+
+clean () {
+    find "${root}" \
+         \! \( -type d -name .git -prune \) \
+         \! \( -type d -name node_modules -prune \) \
+         -type f \( \
+         -name '*--OURS*' -o \
+         -name '*--THEIRS*' -o \
+         -name '*--BASE*' \) -exec rm -v {} +
 }
 
 at_exit () {
