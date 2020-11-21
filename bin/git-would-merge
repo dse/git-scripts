@@ -7,13 +7,13 @@ set -o errexit
 set -o nounset
 set -o pipefail
 shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
-# set -o xtrace
+#set -o xtrace
 
 main () {
     # top level project directory
     local root="$(git rev-parse --show-toplevel)"
 
-    if [[ "$1" == "clean" ]] ; then
+    if (( $# )) && [[ "$1" == "clean" ]] ; then
         clean
         exit 0
     fi
@@ -137,7 +137,7 @@ would-merge () {
         echo "    merge head is $mergeHead"
         echo "    merge base is $mergeBase"
         echo "    Wrote the following files:"
-        /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${ours}.log" "${theirs}.log" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff" 2>/dev/null | sed 's/^/    /'
+        ( /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${ours}.log" "${theirs}.log" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff" 2>/dev/null | sed 's/^/    /' ) || true
 
         local noConflicts=1
 
