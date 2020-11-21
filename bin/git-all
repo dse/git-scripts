@@ -45,7 +45,7 @@ Getopt::Long::GetOptions(
     "indent"                  => \$indent,
     "no-pty"                  => \$noPty,
     "format=s"                => \$format,
-    "width|format-width=i"    => \$formatWidth,
+    "w|width|format-width=i"    => \$formatWidth,
     "separator=s"             => \$separator,
     "v|verbose+"              => \$verbose,
     "n|dry-run"               => \$dryRun,
@@ -92,6 +92,7 @@ $all->maxDepth($maxDepth)           if defined $maxDepth;
 $all->noGit($noGit)                 if defined $noGit;
 $all->printBasename($printBasename) if defined $printBasename;
 $all->inline($inline)               if defined $inline;
+$all->inline(1)                     if defined $formatWidth && $formatWidth;
 $all->noBrackets($noBrackets)       if defined $noBrackets;
 $all->indent($indent)               if defined $indent;
 $all->noPty($noPty)                 if defined $noPty;
@@ -373,7 +374,9 @@ package My::Git::Porcelain::All {
         if (defined $format) {
             $inlinePrefix = $self->inline && sprintf($format, $dirHeader);
             if (defined $self->formatWidth) {
-                $inlinePrefix = sprintf("%-*s", $self->formatWidth, $inlinePrefix);
+                if (defined $inlinePrefix) {
+                    $inlinePrefix = sprintf("%-*s", $self->formatWidth, $inlinePrefix);
+                }
             }
         } else {
             $inlinePrefix = '';
