@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -o pipefail
+set -o nounset
+set -o errexit
+# set -o xtrace
+
+PROGNAME="$(basename "$0")"
+
+git diff -b -w --ignore-cr-at-eol --ignore-space-at-eol --ignore-blank-lines -U0 "$@" | perl -n -e '
+    if (/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/) {
+        my ($fromStart, $fromLines, $toStart, $toLines) = ($1, $2 // 1, $3, $4 // 1);
+        if ($fromLines > 1) {
+            printf("- lines %d - %d\n", $fromStart, $fromStart + $fromLines - 1);
+        } elsif ($fromLines == 1) {
+            printf("- line %d\n", $fromStart);
+        }
+        if ($toLines > 1) {
+            printf("+ lines %d - %d\n", $toStart, $toStart + $toLines - 1);
+        } elsif ($toLines == 1) {
+            printf("+ line %d\n", $toStart);
+        }
+    }
+'
