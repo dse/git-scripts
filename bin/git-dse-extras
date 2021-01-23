@@ -38,7 +38,7 @@ get-directories () {
     local prefix
     local base
     local dir
-    for prefix in '' 'assets/' ; do
+    for prefix in '' 'assets/' 'www/' ; do
         for base ; do
             dir="${prefix}${base}"
             if [[ -d "${dir}" ]] ; then
