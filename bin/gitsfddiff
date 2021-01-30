@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+path="$1"
+oldFile="$2"
+oldHex="$3"
+oldMode="$4"
+newFile="$5"
+newHex="$6"
+newMode="$7"
+
+temp1="$(mktemp)"
+temp2="$(mktemp)"
+
+filter () {
+    gsed -r \
+         -e '/^UComments: (.*)$/s//UComments: xxx/' \
+         -e '/^XUID: (.*)$/s//XUID: xxx/' \
+         -e '/^CreationTime: (.*)$/s//CreationTime: xxx/' \
+         -e '/^ModificationTime: (.*)$/s//ModificationTime: xxx/'
+}
+
+filter2 () {
+    gsed \
+         -e "s#${temp1}#/${path}#" \
+         -e "s#${temp2}#/${path}#"
+}
+
+cat "${oldFile}" | filter > "${temp1}"
+cat "${newFile}" | filter > "${temp2}"
+
+if git diff --no-index "${temp1}" "${temp2}" | filter2 ; then
+    exit=0
+else
+    exit=$?
+fi
+
+rm "${temp1}"
+rm "${temp2}"
