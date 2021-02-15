@@ -16,7 +16,7 @@ main () {
     local quiet=0
     local optQuiet=''
     local allBranches=0
-    local trace=0
+    local xtrace=0
     local TAB=$'\t'
 
     local OPTARG OPTIND=1 OPTERR=1 OPTION
@@ -59,6 +59,10 @@ main () {
             ab=--right-only
             ;;
     esac
+
+    if (( xtrace )) ; then
+        exec 3>&2
+    fi
 
     local -a branches=()
     local -a revListArguments=()
@@ -115,7 +119,7 @@ options:
 EOF
 
 run () {
-    (( trace )) && >&2 echo '+' "$@"
+    (( xtrace )) && >&3 echo '+' "$@"
     "$@"
 }
 
