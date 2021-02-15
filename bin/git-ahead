@@ -61,6 +61,7 @@ main () {
     esac
 
     if (( xtrace )) ; then
+        # need stderr in case we redirect 2>/dev/null on something
         exec 3>&2
     fi
 
@@ -72,11 +73,11 @@ main () {
         git --no-pager branch --list --no-color --no-column | cut -c3- | mapfile -t branches
         for i in "${branches[@]}" ; do
             if (( quiet )) ; then
-                if ! run git rev-list "${ab}" $optQuiet --count "${i}...remotes/origin/${i}" 2>/dev/null | sed -n '/^0$/d;s/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
+                if ! run git rev-list "${ab}" --count "${i}...remotes/origin/${i}" 2>/dev/null | sed -n '/^0$/d;s/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
                     true
                 fi
             else
-                if ! run git rev-list "${ab}" $optQuiet --count "${i}...remotes/origin/${i}" | sed -n 's/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
+                if ! run git rev-list "${ab}" --count "${i}...remotes/origin/${i}" | sed -n 's/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
                     echo ":-(${TAB}${i}"
                 fi
             fi
@@ -95,11 +96,11 @@ main () {
                     ;;
             esac
             if (( quiet )) ; then
-                if ! run git rev-list "${ab}" $optQuiet --count "${i}" 2>/dev/null | sed -n '/^0$/d;p' ; then
+                if ! run git rev-list "${ab}" --count "${i}" 2>/dev/null | sed -n '/^0$/d;p' ; then
                     true
                 fi
             else
-                if ! run git rev-list "${ab}" $optQuiet --count "${i}" ; then
+                if ! run git rev-list "${ab}" --count "${i}" ; then
                     echo ":-(${TAB}${i}"
                 fi
             fi
