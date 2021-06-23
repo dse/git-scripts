@@ -87,7 +87,7 @@ format-v2 () {
 }
 
 get-options () {
-    while getopts '12h' OPTION ; do
+    while getopts '12hv:' OPTION ; do
         case "${OPTION}" in
             'h')
                 usage
@@ -98,6 +98,9 @@ get-options () {
                 ;;
             '2')
                 format=format-v2
+                ;;
+            'v')
+                format=format-v"${OPTARG}"
                 ;;
             '?')
                 # short option invalid or missing argument
@@ -112,9 +115,9 @@ usage () { cat <<EOF; }
 usage:
     ${PROGNAME} [<option> ...] [--] [<filename> ...]
 options:
-    -1  output format version 1
-    -2  output format version 2
-    -h  help
+    -1, -v1  output format version 1
+    -2, -v2  output format version 2
+    -h       help
 EOF
 
 ###############################################################################
