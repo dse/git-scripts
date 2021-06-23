@@ -47,7 +47,7 @@ check-branch () {
 
 format-v1 () {
     awk '
-        BEGIN { ahead = 0; behind = 0; }
+        BEGIN { ahead = 0; behind = 0; ORS = ""; OFS = ""; }
         NR == 1 { local = $0; next; }
         NR == 2 { remote = $0; next; }
         /^</ { ahead += 1; }
