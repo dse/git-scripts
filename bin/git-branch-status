@@ -52,7 +52,17 @@ format-v1 () {
         NR == 2 { remote = $0; next; }
         /^</ { ahead += 1; }
         /^>/ { behind += 1; }
-        END { printf("%-32s (ahead %4d) | (behind %4d) %s\n", local, ahead, behind, remote); }
+        END {
+            printf("%-32s %s(ahead %4d)%s | %s(behind %4d)%s %s\n",
+                   local,
+                   ahead ? ENVIRON["T_AHEAD"] : "",
+                   ahead,
+                   ahead ? ENVIRON["T_RESET"] : "",
+                   behind ? ENVIRON["T_BEHIND"] : "",
+                   behind,
+                   behind ? ENVIRON["T_RESET"] : "",
+                   remote);
+        }
     '
 }
 
