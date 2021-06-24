@@ -32,6 +32,7 @@ our $dryRun;
 our $errorsOnly;
 our $commentHeader;
 our $noHeader;
+our $nonBlankLines;
 
 Getopt::Long::Configure("bundling", "gnu_compat", "require_order");
 Getopt::Long::GetOptions(
@@ -50,6 +51,7 @@ Getopt::Long::GetOptions(
     "v|verbose+"              => \$verbose,
     "n|dry-run"               => \$dryRun,
     "errors-only"             => \$errorsOnly,
+    "non-blank-lines"         => \$nonBlankLines,
     "h|help" => sub {
         usage(); exit(0);
     }
@@ -79,6 +81,7 @@ options:
   --dry-run
   --errors-only          only show output/stderr when commands fail
   --no-progress          don't show progress.  No effect unless --errors-only.
+  --non-blank-lines      don't print blank lines
 debugging:
   --no-pty               don't use pseudoterminals
 END
@@ -102,6 +105,7 @@ $all->separator($separator)         if defined $separator;
 $all->verbose($verbose)             if defined $verbose;
 $all->dryRun($dryRun)               if defined $dryRun;
 $all->errorsOnly($errorsOnly)       if defined $errorsOnly;
+$all->nonBlankLines($nonBlankLines) if defined $nonBlankLines;
 $all->run(@ARGV);
 
 package My::Git::Porcelain::All {
@@ -125,6 +129,7 @@ package My::Git::Porcelain::All {
         has errorsOnly      => (is => 'rw');
         has inlineSeparator => (is => 'rw');
         has inlinePrefix    => (is => 'rw');
+        has nonBlankLines   => (is => 'rw');
 
         has hasIoPty => (
             is => 'rw', lazy => 1, default => sub {
@@ -291,6 +296,9 @@ package My::Git::Porcelain::All {
         my ($self, $line) = @_;
         local $_ = $line;
         s{\R\z}{};
+        if ($self->nonBlankLines) {
+            return unless m{\S};
+        }
         if ($self->inline) {
             print STDOUT color('green') if isVT(1);
             print STDOUT $self->inlinePrefix;
@@ -307,6 +315,9 @@ package My::Git::Porcelain::All {
         my ($self, $line) = @_;
         local $_ = $line;
         s{\R\z}{};
+        if ($self->nonBlankLines) {
+            return unless m{\S};
+        }
         if ($self->inline) {
             print STDERR color('red') if isVT(2);
             print STDERR $self->inlinePrefix;
