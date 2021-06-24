@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+# based on https://stackoverflow.com/questions/7773939/show-git-ahead-and-behind-info-for-all-branches-including-remotes
+# was in: https://gist.github.com/jehiah/1288596
+# now in: https://github.com/bill-auger/git-branch-status/
+# also:   https://github.com/jwiegley/git-scripts
+
+PROGNAME="$(basename "$0")"
+
+main () {
+    local format=format-v1
+    get-options "$@"
+    shift $((OPTIND - 1))
+    check-branches
+}
+
+check-branches () {
+    local T_RESET=''
+    local T_AHEAD=''
+    local T_BEHIND=''
+    if [[ -t 1 ]] ; then
+        T_RESET=$'\e''[0m'      # reset
+        T_AHEAD=$'\e''[1;33m'   # bright yellow
+        T_BEHIND=$'\e''[1;35m'  # bright magenta
+    fi
+    export T_RESET
+    export T_AHEAD
+    export T_BEHIND
+    git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read local remote ; do
+        check-branch "${local}" "${remote}"
+    done
+}
+
+check-branch () {
+    local local="$1"
+    local remote="$2"
+    shift 2
+    if [[ -z "${remote}" ]] ; then
+        return
+    fi
+    ( echo "${local}" && echo "${remote}" && git rev-list --left-right "${local}...${remote}" -- ) | "${format}"
+}
+
+format-v1 () {
+    awk '
+        BEGIN { ahead = 0; behind = 0; ORS = ""; OFS = ""; }
+        NR == 1 { local = $0; next; }
+        NR == 2 { remote = $0; next; }
+        /^</ { ahead += 1; }
+        /^>/ { behind += 1; }
+        END {
+            printf("%-32s %s(ahead %4d)%s | %s(behind %4d)%s %s\n",
+                   local,
+                   ahead ? ENVIRON["T_AHEAD"] : "",
+                   ahead,
+                   ahead ? ENVIRON["T_RESET"] : "",
+                   behind ? ENVIRON["T_BEHIND"] : "",
+                   behind,
+                   behind ? ENVIRON["T_RESET"] : "",
+                   remote);
+        }
+    '
+}
+
+format-v2 () {
+    awk '
+        BEGIN { ahead = 0; behind = 0; ORS = ""; OFS = ""; }
+        NR == 1 { local = $0; next; }
+        NR == 2 { remote = $0; next; }
+        /^</ { ahead += 1; }
+        /^>/ { behind += 1; }
+        END {
+            printf("%s...%s", local, remote);
+            if (ahead) {
+                printf(" %s[ahead %d]%s", ENVIRON["T_AHEAD"], ahead, ENVIRON["T_RESET"]);
+            }
+            if (behind) {
+                printf(" %s[behind %d]%s", ENVIRON["T_BEHIND"], behind, ENVIRON["T_RESET"]);
+            }
+            print("\n");
+        }
+    '
+}
+
+get-options () {
+    while getopts '12hv:' OPTION ; do
+        case "${OPTION}" in
+            'h')
+                usage
+                exit 0
+                ;;
+            '1')
+                format=format-v1
+                ;;
+            '2')
+                format=format-v2
+                ;;
+            'v')
+                format=format-v"${OPTARG}"
+                ;;
+            '?')
+                # short option invalid or missing argument
+                >&2 echo "Type '${PROGNAME} -h' for more information."
+                exit 1
+                ;;
+        esac
+    done
+}
+
+usage () { cat <<EOF; }
+usage:
+    ${PROGNAME} [<option> ...] [--] [<filename> ...]
+options:
+    -1, -v1  output format version 1
+    -2, -v2  output format version 2
+    -h       help
+EOF
+
+###############################################################################
+main "$@"
