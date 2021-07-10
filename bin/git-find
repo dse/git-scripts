@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+MAIN () {
+    local action=find
+    local green=$'\e'"[0;32m"
+    local reset=$'\e'"[0m"
+    local -i verbose=0
+    while (( $# )) && [[ "$1" == "-"* ]] ; do
+        case "$1" in
+            -l|--list)
+                action=list
+                ;;
+            -v|-verbose)
+                verbose+=1
+                ;;
+        esac
+        shift
+    done
+    case "${action}" in
+        list)
+            GIT-FIND-LIST "$@"
+            ;;
+        find)
+            GIT-FIND "$@"
+            ;;
+    esac
+}
+
+GIT-FIND-LIST () {
+    if (( verbose )) ; then
+        find . -type d \
+             \! \( -name node_modules -prune \) \
+             \! \( -exec test -d '{}/.git' \; -print -prune \) -exec echo '# {}' \;
+    else
+        find . -type d \
+             \! \( -name node_modules -prune \) \
+             -exec test -d '{}/.git' \; -print -prune
+    fi
+}
+
+GIT-FIND () {
+    if (( $# )) ; then
+        find . -type d \
+             \! \( -name node_modules -prune \) \
+             -exec test -d '{}/.git' \; \
+             -exec echo "${green}==> {} <==${reset}" \; -prune \
+             -exec git in-dir {} "$@" \;
+    else
+        GIT-FIND-LIST
+    fi
+}
+
+#------------------------------------------------------------------------------
+MAIN "$@"
