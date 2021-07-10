@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+MAIN () {
+    if (( $# )) ; then
+        cd "$1"
+        shift
+        exec git "$@"
+    else
+        >&2 echo "no directory specified"
+        exit 1
+    fi
+}
+
+#------------------------------------------------------------------------------
+MAIN "$@"
