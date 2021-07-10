@@ -4,6 +4,7 @@ set -o pipefail
 set -o nounset
 
 MAIN () {
+    export GIT_PAGER=cat
     local action=find
     local green=$'\e'"[0;32m"
     local reset=$'\e'"[0m"
