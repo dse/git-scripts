@@ -4,10 +4,41 @@ set -o pipefail
 set -o nounset
 
 MAIN () {
+    local width=32
+    local prefix1=''
+    local prefix2=''
+    local green=$'\e'"[0;32m"
+    local reset=$'\e'"[0m"
+    while (( $# )) && [[ "$1" == -* ]] ; do
+        case "$1" in
+            -w*)
+                width="${1#-w}"
+                ;;
+            --width=*)
+                width="${1#*=}"
+                ;;
+            -p*)
+                prefix1="${1#-p}"
+                prefix2="${1#-p}"
+                ;;
+            --prefix=*)
+                prefix1="${1#*=}"
+                prefix2="${1#*=}"
+                ;;
+        esac
+        shift
+    done
+    if [[ "${prefix1}" != "" ]] ; then
+        prefix1="${green}$(printf "%-${width}s" "${prefix1}")${reset}"
+        prefix2="${green}$(printf "%-${width}s" "${prefix2}")${reset}"
+    fi
     if (( $# )) ; then
         cd "$1"
         shift
-        exec git "$@"
+        if [[ "${prefix1}" = "" ]] ; then
+            exec git "$@"
+        fi
+        git -c color.ui=always "$@" | sed -r -e "1{s#^#${prefix1}#g;n}" -e "s#^#${prefix2}#g"
     else
         >&2 echo "no directory specified"
         exit 1
