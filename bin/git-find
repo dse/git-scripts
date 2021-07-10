@@ -9,6 +9,7 @@ MAIN () {
     local green=$'\e'"[0;32m"
     local reset=$'\e'"[0m"
     local -i verbose=0
+    local -i inline=0
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
             -l|--list)
@@ -16,6 +17,9 @@ MAIN () {
                 ;;
             -v|-verbose)
                 verbose+=1
+                ;;
+            -i|--inline)
+                inline=1
                 ;;
         esac
         shift
@@ -44,11 +48,20 @@ GIT-FIND-LIST () {
 
 GIT-FIND () {
     if (( $# )) ; then
-        find . -type d \
-             \! \( -name node_modules -prune \) \
-             -exec test -d '{}/.git' \; \
-             -exec echo "${green}==> {} <==${reset}" \; -prune \
-             -exec git in-dir {} "$@" \;
+        if (( inline )) ; then
+            find . -type d \
+                 \! \( -name node_modules -prune \) \
+                 -exec test -d '{}/.git' \; \
+                 -prune \
+                 -exec git in-dir -p'[{}] ' {} "$@" \;
+        else
+            find . -type d \
+                 \! \( -name node_modules -prune \) \
+                 -exec test -d '{}/.git' \; \
+                 -exec echo "${green}==> {} <==${reset}" \; \
+                 -prune \
+                 -exec git in-dir {} "$@" \;
+        fi
     else
         GIT-FIND-LIST
     fi
