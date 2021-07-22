@@ -38,7 +38,7 @@ MAIN () {
         if [[ "${prefix1}" = "" ]] ; then
             exec git "$@"
         fi
-        git -c color.ui=always "$@" | sed -r -e "1{s#^#${prefix1}#g;n}" -e "s#^#${prefix2}#g"
+        git -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
     else
         >&2 echo "no directory specified"
         exit 1
