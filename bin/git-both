@@ -8,96 +8,64 @@ MAIN () {
     local root="$(git rev-parse --show-toplevel)"
     cd "${root}"
 
-    local has_HEAD=0
-    local has_FETCH_HEAD=0
-    local has_ORIG_HEAD=0
-    local has_REBASE_HEAD=0
-    local has_MERGE_HEAD=0
-    local filename=''
     local -a filenames=()
-
-    add-exclusions
-
-    if [[ -e "${root}/.git/HEAD"        ]] ; then has_HEAD=1        ; fi
-    if [[ -e "${root}/.git/FETCH_HEAD"  ]] ; then has_FETCH_HEAD=1  ; fi
-    if [[ -e "${root}/.git/ORIG_HEAD"   ]] ; then has_ORIG_HEAD=1   ; fi
-    if [[ -e "${root}/.git/REBASE_HEAD" ]] ; then has_REBASE_HEAD=1 ; fi
-    if [[ -e "${root}/.git/MERGE_HEAD"  ]] ; then has_MERGE_HEAD=1  ; fi
-
     git diff --name-only --diff-filter=U | mapfile -t filenames
     if (( ! ${#filenames[@]} )) ; then
         >&2 echo "no files with conflicts."
         exit 0
     fi
 
-    for filename in "${filenames[@]}" ; do
-        both "${filename}" HEAD
-        both "${filename}" FETCH_HEAD
-        both "${filename}" ORIG_HEAD
-        both "${filename}" REBASE_HEAD
-        both "${filename}" MERGE_HEAD
-    done
-}
+    excludefile="${root}/.git/info/exclude"
+    grep -x -F '*--BASE.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--BASE.*' >> "${excludefile}"
+    grep -x -F '*--OURS.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--OURS.*' >> "${excludefile}"
+    grep -x -F '*--THEIRS.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--THEIRS.*' >> "${excludefile}"
+    grep -x -F '*--BASE' "${excludefile}" >/dev/null 2>&1	|| echo '*--BASE' >> "${excludefile}"
+    grep -x -F '*--OURS' "${excludefile}" >/dev/null 2>&1	|| echo '*--OURS' >> "${excludefile}"
+    grep -x -F '*--THEIRS' "${excludefile}" >/dev/null 2>&1	|| echo '*--THEIRS' >> "${excludefile}"
 
-add-exclusions () {
-    local excludeFile="${root}/.git/info/exclude"
-    add-exclusion '*--HEAD.*'
-    add-exclusion '*--FETCH_HEAD.*'
-    add-exclusion '*--ORIG_HEAD.*'
-    add-exclusion '*--REBASE_HEAD.*'
-    add-exclusion '*--MERGE_HEAD.*'
-}
-
-addedExclusionComment=0
-add-exclusion-comment () {
-    if (( addedExclusionComment )) ; then
-        return
-    fi
-    ( echo; echo "# added by git-both" ) >>"${excludeFile}"
-    addedExclusionComment=1
-}
-
-add-exclusion () {
-    local exclusion="$1"; shift
-    if ! grep -F -x "${exclusion}" "${excludeFile}" >/dev/null 2>/dev/null ; then
-        add-exclusion-comment
-        echo "${exclusion}" >>"${excludeFile}"
-    fi
-}
-
-both () {
-    local filename="$1"; shift
-    local ref="$1"; shift
-    local hasname="has_${ref}"
-    local -n has="${hasname}"
-    if (( ! has )) ; then
-        return
-    fi
-    local dirname="$(dirname "${filename}")"
-    local basename="$(basename "${filename}")"
-    local basebasename
+    local basename
+    local dirname
+    local basenamenoext
     local ext
-    case "${basename}" in
-        .*.*)
-            basebasename="${basename%.*}"
-            ext=".${basename##*.}"
-            ;;
-        .*)
-            basebasename="${basename}"
-            ext=""
-            ;;
-        *.*)
-            basebasename="${basename%.*}"
-            ext=".${basename##*.}"
-            ;;
-        *)
-            basebasename="${basename}"
-            ext=""
-            ;;
-    esac
-    local newfile="${dirname}/${basebasename}--${ref}${ext}"
-    git show "${ref}:${filename}" >"${newfile}"
-    >&2 echo "${newfile}"
+    for filename in "${filenames[@]}" ; do
+	basename="$(basename "$filename")"
+	dirname="$(dirname "$filename")"
+	case "${basename}" in
+	    .*.*)
+		basenamenoext="${basename%.*}"
+		ext=".${basename##*.}"
+		;;
+	    .*)
+		basenamenoext="${basename%.*}"
+		ext=".${basename##*.}"
+		;;
+	    *.*)
+		basenamenoext="${basename%.*}"
+		ext=".${basename##*.}"
+		;;
+	    *)
+		basenamenoext="${basename%.*}"
+		ext=".${basename##*.}"
+		;;
+	esac
+	local base="${dirname}/${basenamenoext}--BASE${ext}"
+	local ours="${dirname}/${basenamenoext}--OURS${ext}"
+	local theirs="${dirname}/${basenamenoext}--THEIRS${ext}"
+
+	git show ":1:${filename}" >"${base}"
+	echo "${base}"
+	git show ":2:${filename}" >"${ours}"
+	echo "${ours}"
+	git show ":3:${filename}" >"${theirs}"
+	echo "${theirs}"
+
+	diff -u -w "${base}" "${theirs}" >"${theirs}.diff" || true
+	echo "${theirs}.diff"
+	wc -l "${theirs}.diff" 
+	diff -u -w "${base}" "${ours}" >"${ours}.diff" || true
+	echo "${ours}.diff"
+	wc -l "${ours}.diff" 
+    done
 }
 
 ###############################################################################
