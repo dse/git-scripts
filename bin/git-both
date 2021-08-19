@@ -16,55 +16,61 @@ MAIN () {
     fi
 
     excludefile="${root}/.git/info/exclude"
-    grep -x -F '*--BASE.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--BASE.*' >> "${excludefile}"
-    grep -x -F '*--OURS.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--OURS.*' >> "${excludefile}"
-    grep -x -F '*--THEIRS.*' "${excludefile}" >/dev/null 2>&1	|| echo '*--THEIRS.*' >> "${excludefile}"
-    grep -x -F '*--BASE' "${excludefile}" >/dev/null 2>&1	|| echo '*--BASE' >> "${excludefile}"
-    grep -x -F '*--OURS' "${excludefile}" >/dev/null 2>&1	|| echo '*--OURS' >> "${excludefile}"
-    grep -x -F '*--THEIRS' "${excludefile}" >/dev/null 2>&1	|| echo '*--THEIRS' >> "${excludefile}"
+    grep -x -F '*--BASE.*' "${excludefile}" >/dev/null 2>&1        || echo '*--BASE.*' >> "${excludefile}"
+    grep -x -F '*--OURS.*' "${excludefile}" >/dev/null 2>&1        || echo '*--OURS.*' >> "${excludefile}"
+    grep -x -F '*--THEIRS.*' "${excludefile}" >/dev/null 2>&1      || echo '*--THEIRS.*' >> "${excludefile}"
+    grep -x -F '*--BASE' "${excludefile}" >/dev/null 2>&1          || echo '*--BASE' >> "${excludefile}"
+    grep -x -F '*--OURS' "${excludefile}" >/dev/null 2>&1          || echo '*--OURS' >> "${excludefile}"
+    grep -x -F '*--THEIRS' "${excludefile}" >/dev/null 2>&1        || echo '*--THEIRS' >> "${excludefile}"
+    grep -x -F '*--BASE.*.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--BASE.*.diff' >> "${excludefile}"
+    grep -x -F '*--OURS.*.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--OURS.*.diff' >> "${excludefile}"
+    grep -x -F '*--THEIRS.*.diff' "${excludefile}" >/dev/null 2>&1 || echo '*--THEIRS.*.diff' >> "${excludefile}"
+    grep -x -F '*--BASE.diff' "${excludefile}" >/dev/null 2>&1     || echo '*--BASE.diff' >> "${excludefile}"
+    grep -x -F '*--OURS.diff' "${excludefile}" >/dev/null 2>&1     || echo '*--OURS.diff' >> "${excludefile}"
+    grep -x -F '*--THEIRS.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--THEIRS.diff' >> "${excludefile}"
 
     local basename
     local dirname
     local basenamenoext
     local ext
     for filename in "${filenames[@]}" ; do
-	basename="$(basename "$filename")"
-	dirname="$(dirname "$filename")"
-	case "${basename}" in
-	    .*.*)
-		basenamenoext="${basename%.*}"
-		ext=".${basename##*.}"
-		;;
-	    .*)
-		basenamenoext="${basename%.*}"
-		ext=".${basename##*.}"
-		;;
-	    *.*)
-		basenamenoext="${basename%.*}"
-		ext=".${basename##*.}"
-		;;
-	    *)
-		basenamenoext="${basename%.*}"
-		ext=".${basename##*.}"
-		;;
-	esac
-	local base="${dirname}/${basenamenoext}--BASE${ext}"
-	local ours="${dirname}/${basenamenoext}--OURS${ext}"
-	local theirs="${dirname}/${basenamenoext}--THEIRS${ext}"
+        basename="$(basename "$filename")"
+        dirname="$(dirname "$filename")"
+        case "${basename}" in
+            .*.*)
+                basenamenoext="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+            .*)
+                basenamenoext="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+            *.*)
+                basenamenoext="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+            *)
+                basenamenoext="${basename%.*}"
+                ext=".${basename##*.}"
+                ;;
+        esac
+        local base="${dirname}/${basenamenoext}--BASE${ext}"
+        local ours="${dirname}/${basenamenoext}--OURS${ext}"
+        local theirs="${dirname}/${basenamenoext}--THEIRS${ext}"
 
-	git show ":1:${filename}" >"${base}"
-	echo "${base}"
-	git show ":2:${filename}" >"${ours}"
-	echo "${ours}"
-	git show ":3:${filename}" >"${theirs}"
-	echo "${theirs}"
+        git show ":1:${filename}" >"${base}"
+        echo "${base}"
+        git show ":2:${filename}" >"${ours}"
+        echo "${ours}"
+        git show ":3:${filename}" >"${theirs}"
+        echo "${theirs}"
 
-	diff -u -w "${base}" "${theirs}" >"${theirs}.diff" || true
-	echo "${theirs}.diff"
-	wc -l "${theirs}.diff" 
-	diff -u -w "${base}" "${ours}" >"${ours}.diff" || true
-	echo "${ours}.diff"
-	wc -l "${ours}.diff" 
+        diff -u -w "${base}" "${theirs}" >"${theirs}.diff" || true
+        echo "${theirs}.diff"
+        wc -l "${theirs}.diff" 
+        diff -u -w "${base}" "${ours}" >"${ours}.diff" || true
+        echo "${ours}.diff"
+        wc -l "${ours}.diff" 
     done
 }
 
