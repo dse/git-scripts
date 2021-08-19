@@ -16,18 +16,18 @@ MAIN () {
     fi
 
     excludefile="${root}/.git/info/exclude"
-    grep -x -F '*--BASE.*' "${excludefile}" >/dev/null 2>&1        || echo '*--BASE.*' >> "${excludefile}"
-    grep -x -F '*--OURS.*' "${excludefile}" >/dev/null 2>&1        || echo '*--OURS.*' >> "${excludefile}"
-    grep -x -F '*--THEIRS.*' "${excludefile}" >/dev/null 2>&1      || echo '*--THEIRS.*' >> "${excludefile}"
-    grep -x -F '*--BASE' "${excludefile}" >/dev/null 2>&1          || echo '*--BASE' >> "${excludefile}"
-    grep -x -F '*--OURS' "${excludefile}" >/dev/null 2>&1          || echo '*--OURS' >> "${excludefile}"
-    grep -x -F '*--THEIRS' "${excludefile}" >/dev/null 2>&1        || echo '*--THEIRS' >> "${excludefile}"
-    grep -x -F '*--BASE.*.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--BASE.*.diff' >> "${excludefile}"
-    grep -x -F '*--OURS.*.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--OURS.*.diff' >> "${excludefile}"
-    grep -x -F '*--THEIRS.*.diff' "${excludefile}" >/dev/null 2>&1 || echo '*--THEIRS.*.diff' >> "${excludefile}"
-    grep -x -F '*--BASE.diff' "${excludefile}" >/dev/null 2>&1     || echo '*--BASE.diff' >> "${excludefile}"
-    grep -x -F '*--OURS.diff' "${excludefile}" >/dev/null 2>&1     || echo '*--OURS.diff' >> "${excludefile}"
-    grep -x -F '*--THEIRS.diff' "${excludefile}" >/dev/null 2>&1   || echo '*--THEIRS.diff' >> "${excludefile}"
+    exclude '*--BASE.*'
+    exclude '*--OURS.*'
+    exclude '*--THEIRS.*'
+    exclude '*--BASE'
+    exclude '*--OURS'
+    exclude '*--THEIRS'
+    exclude '*--BASE.*.diff'
+    exclude '*--OURS.*.diff'
+    exclude '*--THEIRS.*.diff'
+    exclude '*--BASE.diff'
+    exclude '*--OURS.diff'
+    exclude '*--THEIRS.diff'
 
     local basename
     local dirname
@@ -59,18 +59,24 @@ MAIN () {
         local theirs="${dirname}/${basenamenoext}--THEIRS${ext}"
 
         git show ":1:${filename}" >"${base}"
-        echo "${base}"
+        wc -l "${base}"
         git show ":2:${filename}" >"${ours}"
-        echo "${ours}"
+        wc -l "${ours}"
         git show ":3:${filename}" >"${theirs}"
-        echo "${theirs}"
+        wc -l "${theirs}"
 
         diff -u -w "${base}" "${theirs}" >"${theirs}.diff" || true
-        echo "${theirs}.diff"
         wc -l "${theirs}.diff" 
+
         diff -u -w "${base}" "${ours}" >"${ours}.diff" || true
-        echo "${ours}.diff"
         wc -l "${ours}.diff" 
+    done
+}
+
+exclude () {
+    local i
+    for i ; do
+        grep -x -F "${i}" "${excludefile}" >/dev/null 2>&1 || echo "${i}" >> "${excludefile}"
     done
 }
 
