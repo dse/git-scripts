@@ -9,6 +9,7 @@ MAIN () {
     local prefix2=''
     local green=$'\e'"[0;32m"
     local reset=$'\e'"[0m"
+    local nopager=''
     while (( $# )) && [[ "$1" == -* ]] ; do
         case "$1" in
             -w*)
@@ -25,6 +26,9 @@ MAIN () {
                 prefix1="${1#*=}"
                 prefix2="${1#*=}"
                 ;;
+            --no-pager)
+                nopager='--no-pager'
+                ;;
         esac
         shift
     done
@@ -38,7 +42,7 @@ MAIN () {
         if [[ "${prefix1}" = "" ]] ; then
             exec git "$@"
         fi
-        git -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
+        git $nopager -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
     else
         >&2 echo "no directory specified"
         exit 1
