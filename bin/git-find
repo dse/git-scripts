@@ -10,6 +10,9 @@ MAIN () {
     local reset=$'\e'"[0m"
     local -i verbose=0
     local -i inline=0
+    local mindepth=''
+    local maxdepth=''
+    local nopager=''
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
             -l|--list)
@@ -20,6 +23,19 @@ MAIN () {
                 ;;
             -i|--inline)
                 inline=1
+                ;;
+            --no-pager)
+                nopager='--no-pager'
+                ;;
+            -mindepth|--mindepth)
+                shift
+                if (( $# < 1 )) ; then >&2 echo "-mindepth requires an argument"; exit 1; fi
+                mindepth="$1"
+                ;;
+            -maxdepth|--maxdepth)
+                shift
+                if (( $# < 1 )) ; then >&2 echo "-maxdepth requires an argument"; exit 1; fi
+                maxdepth="$1"
                 ;;
         esac
         shift
@@ -36,11 +52,17 @@ MAIN () {
 
 GIT-FIND-LIST () {
     if (( verbose )) ; then
-        find . -type d \
+        find . \
+             ${mindepth:+-mindepth "${mindepth}"} \
+             ${maxdepth:+-maxdepth "${maxdepth}"} \
+             -type d \
              \! \( -name node_modules -prune \) \
              \! \( -exec test -d '{}/.git' \; -print -prune \) -exec echo '# {}' \;
     else
-        find . -type d \
+        find . \
+             ${mindepth:+-mindepth "${mindepth}"} \
+             ${maxdepth:+-maxdepth "${maxdepth}"} \
+             -type d \
              \! \( -name node_modules -prune \) \
              -exec test -d '{}/.git' \; -print -prune
     fi
@@ -49,18 +71,24 @@ GIT-FIND-LIST () {
 GIT-FIND () {
     if (( $# )) ; then
         if (( inline )) ; then
-            find . -type d \
+            find . \
+                 ${mindepth:+-mindepth "${mindepth}"} \
+                 ${maxdepth:+-maxdepth "${maxdepth}"} \
+                 -type d \
                  \! \( -name node_modules -prune \) \
                  -exec test -d '{}/.git' \; \
                  -prune \
-                 -exec git in-dir -p'[{}] ' {} "$@" \;
+                 -exec git in-dir $nopager -p'[{}] ' {} "$@" \;
         else
-            find . -type d \
+            find . \
+                 ${mindepth:+-mindepth "${mindepth}"} \
+                 ${maxdepth:+-maxdepth "${maxdepth}"} \
+                 -type d \
                  \! \( -name node_modules -prune \) \
                  -exec test -d '{}/.git' \; \
                  -exec echo "${green}==> {} <==${reset}" \; \
                  -prune \
-                 -exec git in-dir {} "$@" \;
+                 -exec git in-dir $nopager {} "$@" \;
         fi
     else
         GIT-FIND-LIST
