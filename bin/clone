@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+if ! [[ -e .clone.sh ]] ; then
+    cat <<EOF >.clone.sh
+# -*- sh -*-
+# Uncomment one of the CLONE_TEMPLATE lines below.
+# Do not change <<USER>> or <<REPOS>>.
+# In the CLONE_USER line below, change <USER> to your username.
+
+# CLONE_TEMPLATE="git@github.com:<<USER>>/<<REPOS>>.git"
+# CLONE_TEMPLATE="https://github.com/<<USER>>/<<REPOS>>.git"
+# CLONE_TEMPLATE="git@bitbucket.org:<<USER>>/<<REPOS>>.git"
+
+CLONE_USER="<USER>"
+
+EOF
+    >&2 echo "I just created a file called '.clone.sh' for you."
+    >&2 echo "Please view its contents and edit as instructed."
+    exit 0
+fi
+
+. .clone.sh
+
+if ! [[ -v CLONE_TEMPLATE ]] ; then
+    >&2 echo "You haven't set CLONE_TEMPLATE."
+    exit 1
+fi
+
+if ! [[ -v CLONE_USER ]] ; then
+    >&2 echo "You haven't set CLONE_USER."
+    exit 1
+fi
+
+if ! [[ "${CLONE_TEMPLATE}" = *'<<USER>>'* ]] ; then
+    >&2 echo "CLONE_TEMPLATE is missing the <<USER>> placeholder."
+    exit 1
+fi
+
+if ! [[ "${CLONE_TEMPLATE}" = *'<<REPOS>>'* ]] ; then
+    >&2 echo "CLONE_TEMPLATE is missing the <<REPOS>> placeholder."
+    exit 1
+fi
+
+uri="${CLONE_TEMPLATE}"
+
+if (( $# == 1 )) ; then
+    if [[ "$1" = */*/* ]] ; then
+        >&2 echo "too may slashes"
+        exit 1
+    elif [[ "$1" = */* ]] ; then
+        user="${1%%/*}"
+        repos="${1#*/}"
+    else
+        user="${CLONE_USER}"
+        repos="$1"
+    fi
+elif (( $# == 2 )) ; then
+    if [[ "$1" = */* ]] ; then
+        >&2 echo "unwanted slash"
+        exit 1
+    elif [[ "$2" = */* ]] ; then
+        >&2 echo "unwanted slash"
+        exit 1
+    fi
+    user="$1"
+    repos="$2"
+fi
+
+uri="${uri//<<USER>>/${user}}"
+uri="${uri//<<REPOS>>/${repos}}"
+git clone "${uri}"

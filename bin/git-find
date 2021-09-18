@@ -13,6 +13,7 @@ MAIN () {
     local mindepth=''
     local maxdepth=''
     local nopager=''
+    local -i noheader=0
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
             -l|--list)
@@ -23,6 +24,9 @@ MAIN () {
                 ;;
             -i|--inline)
                 inline=1
+                ;;
+            --no-header)
+                noheader=1
                 ;;
             --no-pager)
                 nopager='--no-pager'
@@ -69,6 +73,10 @@ GIT-FIND-LIST () {
 }
 
 GIT-FIND () {
+    local -a find1
+    local -a find2
+    local -a find3
+    local -a find
     if (( $# )) ; then
         if (( inline )) ; then
             find . \
@@ -80,15 +88,34 @@ GIT-FIND () {
                  -prune \
                  -exec git in-dir $nopager -p'[{}] ' {} "$@" \;
         else
-            find . \
-                 ${mindepth:+-mindepth "${mindepth}"} \
-                 ${maxdepth:+-maxdepth "${maxdepth}"} \
-                 -type d \
-                 \! \( -name node_modules -prune \) \
-                 -exec test -d '{}/.git' \; \
-                 -exec echo "${green}==> {} <==${reset}" \; \
-                 -prune \
-                 -exec git in-dir $nopager {} "$@" \;
+            find1=(
+                find .
+                ${mindepth:+-mindepth "${mindepth}"}
+                ${maxdepth:+-maxdepth "${maxdepth}"}
+                -type d
+                \! \( -name node_modules -prune \)
+                -exec test -d '{}/.git' \;
+            )
+            find2=(
+                -exec echo "${green}==> {} <==${reset}" \;
+            )
+            find3=(
+                -prune
+                -exec git in-dir $nopager {} "$@" \;
+            )
+            if (( noheader )) ; then
+                find=(
+                    "${find1[@]}"
+                    "${find3[@]}"
+                )
+            else
+                find=(
+                    "${find1[@]}"
+                    "${find2[@]}"
+                    "${find3[@]}"
+                )
+            fi
+            "${find[@]}"
         fi
     else
         GIT-FIND-LIST
