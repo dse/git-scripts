@@ -1,0 +1,21 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+
+use POSIX qw(strftime);
+
+my $now = time();
+
+while (<>) {
+    s{\{epoch:(?<epoch>\d+)\}}{formatTime($+{epoch})}ge;
+    print;
+}
+
+sub formatTime {
+    my ($epoch) = @_;
+    my $format = '%a %m/%d %H:%M';
+    if ($epoch < $now - 182 * 24 * 60 * 60 || $epoch > $now) {
+        $format = '%a %m/%d/%Y ';
+    }
+    return strftime($format, localtime($epoch));
+}
