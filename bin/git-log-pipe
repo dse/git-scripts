@@ -7,15 +7,24 @@ use POSIX qw(strftime);
 my $now = time();
 
 while (<>) {
-    s{\{epoch:(?<epoch>\d+)\}}{formatTime($+{epoch})}ge;
+    s{\{
+      epoch
+      \#(?<epoch>\d+)
+      \#(?<format1>[^#]*)
+      \#(?<format2>[^#]*)
+      \}}
+     {formatTime($+{epoch}, $+{format1}, $+{format2})}gex;
     print;
 }
 
 sub formatTime {
-    my ($epoch) = @_;
-    my $format = '%a %m/%d %H:%M';
+    my ($epoch, $format1, $format2) = @_;
+    my $format = $format1;
     if ($epoch < $now - 182 * 24 * 60 * 60 || $epoch > $now) {
-        $format = '%a %m/%d/%Y ';
+        $format = $format2;
+    }
+    if ($format !~ m{%}) {
+        return $format;
     }
     return strftime($format, localtime($epoch));
 }
