@@ -10,6 +10,7 @@ MAIN () {
     local green=$'\e'"[0;32m"
     local reset=$'\e'"[0m"
     local nopager=''
+    local pipe=''
     while (( $# )) && [[ "$1" == -* ]] ; do
         case "$1" in
             -w*)
@@ -29,6 +30,21 @@ MAIN () {
             --no-pager)
                 nopager='--no-pager'
                 ;;
+            -P|--pipe)
+                shift
+                if (( $# < 1 )) ; then >&2 echo "-P/--pipe requires an argument"; exit 1; fi
+                pipe="$1"
+                ;;
+            -P*)
+                pipe="${1#-p}"
+                ;;
+            --pipe=*)
+                pipe="${1#--pipe=}"
+                ;;
+            *)
+                >&2 echo "unknown option: $1"
+                exit 1
+                ;;
         esac
         shift
     done
@@ -39,13 +55,22 @@ MAIN () {
     if (( $# )) ; then
         cd "$1"
         shift
-        if [[ "${prefix1}" = "" ]] ; then
-            exec git $nopager "$@"
+        if [[ -z "${prefix1}" ]] && [[ -z "${prefix2}" ]] ; then
+            P git $nopager "$@"
+        else
+            P git $nopager -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
         fi
-        git $nopager -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
     else
         >&2 echo "no directory specified"
         exit 1
+    fi
+}
+
+P () {
+    if [[ -n "${pipe}" ]] ; then
+        "$@" | $pipe
+    else
+        "$@"
     fi
 }
 
