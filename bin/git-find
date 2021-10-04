@@ -3,6 +3,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# git find [<option> ...] <git-command> <git-command-arguments> [--- <directories|repositories>]
+
 MAIN () {
     export GIT_PAGER=cat
     local action=find
@@ -17,6 +19,9 @@ MAIN () {
     local -i noheader=0
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
+            ---)
+                break
+                ;;
             -l|--list)
                 action=list
                 ;;
@@ -63,26 +68,62 @@ MAIN () {
         esac
         shift
     done
-    case "${action}" in
-        list)
-            GIT-FIND-LIST "$@"
-            ;;
-        find)
-            GIT-FIND "$@"
-            ;;
-    esac
+
+    local -a gitcommand=()
+    local -a findarguments=()
+    local arg=''
+
+    while (( $# )) ; do
+        arg="$1"
+        shift
+        if [[ "${arg}" = "---" ]] ; then
+            break
+        fi
+        gitcommand+=("${arg}")
+    done
+
+    while (( $# )) ; do
+        arg="$1"
+        shift
+        findarguments+=("${arg}")
+    done
+
+    if (( ! ${#gitcommand[@]} )) ; then
+        TAKE-ACTION GIT-FIND-LIST
+    else
+        case "${action}" in
+            list)
+                TAKE-ACTION GIT-FIND-LIST
+                ;;
+            find)
+                TAKE-ACTION GIT-FIND
+                ;;
+        esac
+    fi
+}
+
+TAKE-ACTION () {
+    local action="$1"; shift
+    local i
+    if (( ${#findarguments[@]} )) ; then
+        for i in "${findarguments[@]}" ; do
+            "${action}" "${i}"
+        done
+    else
+        "${action}" .
+    fi
 }
 
 GIT-FIND-LIST () {
     if (( verbose )) ; then
-        find . \
+        find "$1" \
              ${mindepth:+-mindepth "${mindepth}"} \
              ${maxdepth:+-maxdepth "${maxdepth}"} \
              -type d \
              \! \( -name node_modules -prune \) \
              \! \( -exec test -d '{}/.git' \; -print -prune \) -exec echo '# {}' \;
     else
-        find . \
+        find "$1" \
              ${mindepth:+-mindepth "${mindepth}"} \
              ${maxdepth:+-maxdepth "${maxdepth}"} \
              -type d \
@@ -98,46 +139,46 @@ GIT-FIND () {
     local -a find
     if (( $# )) ; then
         if (( inline )) ; then
-            find . \
+            find "$1" \
                  ${mindepth:+-mindepth "${mindepth}"} \
                  ${maxdepth:+-maxdepth "${maxdepth}"} \
                  -type d \
                  \! \( -name node_modules -prune \) \
                  -exec test -d '{}/.git' \; \
                  -prune \
-                 -exec git in-dir $nopager ${pipe:+"--pipe=${pipe}"} -p'[{}] ' {} "$@" \;
+                 -exec git in-dir $nopager ${pipe:+"--pipe=${pipe}"} -p'[{}] ' {} "${gitcommand[@]}" \;
         else
+            # what to find
             find1=(
-                find .
+                find "$1"
                 ${mindepth:+-mindepth "${mindepth}"}
                 ${maxdepth:+-maxdepth "${maxdepth}"}
                 -type d
                 \! \( -name node_modules -prune \)
                 -exec test -d '{}/.git' \;
             )
+
+            # print header (may run with or without)
             find2=(
                 -exec echo "${green}==> {} <==${reset}" \;
             )
+
+            # what action to take
             find3=(
                 -prune
-                -exec git in-dir ${pipe:+"--pipe=${pipe}"} {} "$@" \;
+                -exec git in-dir ${pipe:+"--pipe=${pipe}"} {} "${gitcommand[@]}" \;
             )
+
             if (( noheader )) ; then
-                find=(
-                    "${find1[@]}"
-                    "${find3[@]}"
-                )
+                find=("${find1[@]}"
+                      "${find3[@]}")
             else
-                find=(
-                    "${find1[@]}"
-                    "${find2[@]}"
-                    "${find3[@]}"
-                )
+                find=("${find1[@]}"
+                      "${find2[@]}"
+                      "${find3[@]}")
             fi
             "${find[@]}"
         fi
-    else
-        GIT-FIND-LIST
     fi
 }
 

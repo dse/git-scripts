@@ -42,19 +42,43 @@ if ! [[ "${CLONE_TEMPLATE}" = *'<<REPOS>>'* ]] ; then
 fi
 
 uri="${CLONE_TEMPLATE}"
+dir=""
 
 if (( $# == 1 )) ; then
     if [[ "$1" = */*/* ]] ; then
         >&2 echo "too may slashes"
         exit 1
     elif [[ "$1" = */* ]] ; then
+        # clone <user>/<repos>
+        # clone -/<repos>
+        # clone /<repos>
         user="${1%%/*}"
         repos="${1#*/}"
     else
+        # clone <repos>
         user="${CLONE_USER}"
         repos="$1"
     fi
 elif (( $# == 2 )) ; then
+    if [[ "$1" = */* ]] ; then
+        # clone <user>/<repos> <dir>
+        # clone -/<repos> <dir>
+        # clone /<repos> <dir>
+        user="${1%%/*}"
+        repos="${1#*/}"
+        if [[ "${user}" = "" ]] || [[ "${user}" = "/" ]] ; then
+            user="${CLONE_USER}"
+        fi
+        dir="$2"
+    elif [[ "$2" = */* ]] ; then
+        >&2 echo "unwanted slash"
+        exit 1
+    fi
+    # clone <user> <repos>
+    # clone - <repos>
+    user="$1"
+    repos="$2"
+elif (( $# == 3 )) ; then
     if [[ "$1" = */* ]] ; then
         >&2 echo "unwanted slash"
         exit 1
@@ -62,10 +86,21 @@ elif (( $# == 2 )) ; then
         >&2 echo "unwanted slash"
         exit 1
     fi
+    # clone <user> <repos> <dir>
+    # clone - <repos> <dir>
     user="$1"
     repos="$2"
+    dir="$3"
+fi
+
+if [[ "${user}" = "" ]] || [[ "${user}" = "-" ]] ; then
+    user="${CLONE_USER}"
 fi
 
 uri="${uri//<<USER>>/${user}}"
 uri="${uri//<<REPOS>>/${repos}}"
-git clone "${uri}"
+if [[ -n "$dir" ]] ; then
+    git clone "${uri}" "${dir}"
+else
+    git clone "${uri}"
+fi
