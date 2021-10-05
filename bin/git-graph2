@@ -51,15 +51,6 @@ Getopt::Long::GetOptions(
             '--decorate',
         );
     },
-    'coda' => sub {
-        push(
-            @{$g2->gitLogOptions},
-            '--all',
-            '--oneline',
-            '--decorate',
-            '--color',
-        );
-    },
 
     # revlist options
     'A=s'                  => sub { $g2->revList->{A} = { spec => $_[1] }; },
@@ -196,6 +187,8 @@ package My::Git::Graph2 {
         has commits       => (is => 'rw', default => sub { return []; }); # [ commit, ... ]
         has commitParents => (is => 'rw', default => sub { return {}; }); # { commit => [ parent, ... ] }
         has commitLogs    => (is => 'rw', default => sub { return {}; }); # { commit => [ line, ... ] }
+
+        has isatty => (is => 'rw', default => 0); # for color handling
     }
 
     our @endHandler;
@@ -203,6 +196,11 @@ package My::Git::Graph2 {
         foreach my $endHandler (@endHandler) {
             $endHandler->();
         }
+    }
+
+    sub BUILD {
+        my ($self) = @_;
+        $self->isatty(1) if -t 1; # for color handling
     }
 
     sub run {
@@ -218,6 +216,7 @@ package My::Git::Graph2 {
         }
     }
 
+    # TODO: consider using IO::Pager.
     sub less {
         my ($self) = @_;
         if (!(-t fileno(\*STDOUT) && -t fileno(\*STDIN))) {
@@ -805,8 +804,10 @@ package My::Git::Graph2 {
 
     sub getGitLogCommand {
         my ($self, @args) = @_;
+        my @color;
+        push(@color, '--color') if $self->isatty;
         my @cmd = (
-            'git', 'log', '--parents', '--topo-order',
+            'git', 'log', '--parents', '--topo-order', @color,
             @{$self->gitLogOptions},
             @args
         );
