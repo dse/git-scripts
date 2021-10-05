@@ -757,7 +757,7 @@ package My::Git::Graph2 {
     sub getGitLogCommand {
         my ($self, @args) = @_;
         my @cmd = (
-            'git', 'log', '--parents',
+            'git', 'log', '--parents', '--topo-order',
             @{$self->gitLogOptions},
             @args
         );
