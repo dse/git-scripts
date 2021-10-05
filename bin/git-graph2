@@ -51,6 +51,15 @@ Getopt::Long::GetOptions(
             '--decorate',
         );
     },
+    'coda' => sub {
+        push(
+            @{$g2->gitLogOptions},
+            '--all',
+            '--oneline',
+            '--decorate',
+            '--color',
+        );
+    },
 
     # revlist options
     'A=s'                  => sub { $g2->revList->{A} = { spec => $_[1] }; },
@@ -149,6 +158,8 @@ package My::Git::Graph2 {
     use Text::Wrap qw();
     use List::Util qw(min max);
     use Moo;
+    use POSIX qw(dup2);
+    use IO::Pty;
 
     INIT {
         # state
@@ -187,8 +198,16 @@ package My::Git::Graph2 {
         has commitLogs    => (is => 'rw', default => sub { return {}; }); # { commit => [ line, ... ] }
     }
 
+    our @endHandler;
+    END {
+        foreach my $endHandler (@endHandler) {
+            $endHandler->();
+        }
+    }
+
     sub run {
         my ($self, @args) = @_;
+        $self->less();
         $self->collectRevs();
         $self->collectRevLists();
         $self->printRevListLegends();
@@ -197,6 +216,74 @@ package My::Git::Graph2 {
         } else {
             $self->runGit(@args);
         }
+    }
+
+    sub less {
+        my ($self) = @_;
+        if (!(-t fileno(\*STDOUT) && -t fileno(\*STDIN))) {
+            print("not running self through pager\n");
+            warn("not running self through pager\n");
+            return;
+        }
+
+        select(STDOUT); $| = 1;
+        select(STDERR); $| = 1;
+        select(STDIN); $| = 1;
+
+        my $writeToChild = IO::Pty->new() or die("IO::Pty: $!");
+        my $readFromParent = $writeToChild->slave();
+
+        my $writeToParent = IO::Pty->new() or die("IO::Pty: $!");
+        my $readFromChild = $writeToParent->slave();
+
+        my $pid = fork();
+        if (!defined $pid) {
+            warn("cannot fork: $!\n");
+            return;
+        }
+
+        if (!$pid) {            # child
+            $writeToChild->make_slave_controlling_terminal() or die("make slave controlling terminal: $!");; # slave is readFromParent
+            close($writeToChild) or die("close: $!");
+            close($readFromChild) or die("close: $!");
+
+            dup2($writeToParent, fileno(\*STDOUT)) or die("dup2: $!");
+            dup2($readFromParent, fileno(\*STDIN)) or die("dup2: $!");
+
+            if (defined $ENV{GIT_GRAPH2_PAGER}) {
+                warn("exec $ENV{GIT_GRAPH2_PAGER}");
+                exec($ENV{GIT_GRAPH2_PAGER});
+            }
+            if (defined $ENV{GIT_PAGER}) {
+                warn("exec $ENV{GIT_PAGER}");
+                exec($ENV{GIT_PAGER});
+            }
+            if (defined $ENV{PAGER}) {
+                warn("exec $ENV{PAGER}");
+                exec($ENV{PAGER});
+            }
+            # We put exec calls in blocks by themselves to suppress
+            # "Statement unlikely to be reached" warnings.  See
+            # perldiag manpage.
+            warn("exec less");
+            { exec('less'); }
+            warn("exec more");
+            { exec('more'); }
+            die("cannot find a pager");
+        }
+
+        warn("parent stderr test");
+        dup2(fileno($writeToChild), fileno(\*STDOUT)) or die("dup2: $!");
+        dup2(fileno($readFromChild), fileno(\*STDIN)) or die("dup2: $!");
+
+        close($writeToParent) or die("close: $!");
+        $writeToChild->close_slave();
+        # close($readFromParent) or die("close: $!");
+
+        push(@endHandler, sub {
+                 warn("waiting for $pid");
+                 waitpid($pid, 0);
+             });
     }
 
     sub collectRevs {
