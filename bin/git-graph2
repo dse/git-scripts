@@ -221,69 +221,31 @@ package My::Git::Graph2 {
     sub less {
         my ($self) = @_;
         if (!(-t fileno(\*STDOUT) && -t fileno(\*STDIN))) {
-            print("not running self through pager\n");
-            warn("not running self through pager\n");
             return;
         }
 
-        select(STDOUT); $| = 1;
-        select(STDERR); $| = 1;
-        select(STDIN); $| = 1;
+        my $pager = $ENV{GIT_GRAPH2_PAGER} // $ENV{GIT_PAGER} // $ENV{PAGER} // 'less';
 
-        my $writeToChild = IO::Pty->new() or die("IO::Pty: $!");
-        my $readFromParent = $writeToChild->slave();
-
-        my $writeToParent = IO::Pty->new() or die("IO::Pty: $!");
-        my $readFromChild = $writeToParent->slave();
-
+        my ($childInput, $parentOutput);
+        pipe($childInput, $parentOutput) or die("pipe: $!");
         my $pid = fork();
-        if (!defined $pid) {
-            warn("cannot fork: $!\n");
-            return;
+        die("fork: $!") if !defined $pid;
+
+        my $me = sub {
+            dup2(fileno($parentOutput), 1) or die("dup2: $!");
+        };
+        my $less = sub {
+            dup2(fileno($childInput), 0) or die("dup2: $!");
+            exec($pager) or die("exec: $!");
+        };
+
+        if ($pid) {
+            # parent
+            $less->();
+        } else {
+            # child
+            $me->();
         }
-
-        if (!$pid) {            # child
-            $writeToChild->make_slave_controlling_terminal() or die("make slave controlling terminal: $!");; # slave is readFromParent
-            close($writeToChild) or die("close: $!");
-            close($readFromChild) or die("close: $!");
-
-            dup2($writeToParent, fileno(\*STDOUT)) or die("dup2: $!");
-            dup2($readFromParent, fileno(\*STDIN)) or die("dup2: $!");
-
-            if (defined $ENV{GIT_GRAPH2_PAGER}) {
-                warn("exec $ENV{GIT_GRAPH2_PAGER}");
-                exec($ENV{GIT_GRAPH2_PAGER});
-            }
-            if (defined $ENV{GIT_PAGER}) {
-                warn("exec $ENV{GIT_PAGER}");
-                exec($ENV{GIT_PAGER});
-            }
-            if (defined $ENV{PAGER}) {
-                warn("exec $ENV{PAGER}");
-                exec($ENV{PAGER});
-            }
-            # We put exec calls in blocks by themselves to suppress
-            # "Statement unlikely to be reached" warnings.  See
-            # perldiag manpage.
-            warn("exec less");
-            { exec('less'); }
-            warn("exec more");
-            { exec('more'); }
-            die("cannot find a pager");
-        }
-
-        warn("parent stderr test");
-        dup2(fileno($writeToChild), fileno(\*STDOUT)) or die("dup2: $!");
-        dup2(fileno($readFromChild), fileno(\*STDIN)) or die("dup2: $!");
-
-        close($writeToParent) or die("close: $!");
-        $writeToChild->close_slave();
-        # close($readFromParent) or die("close: $!");
-
-        push(@endHandler, sub {
-                 warn("waiting for $pid");
-                 waitpid($pid, 0);
-             });
     }
 
     sub collectRevs {
