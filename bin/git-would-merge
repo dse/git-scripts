@@ -9,6 +9,66 @@ set -o pipefail
 shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
 #set -o xtrace
 
+# .NAME
+#     git-would-merge
+# .DESCRIPTION
+#     Quick and dirty utility for when there are merge conflicts.
+#
+#     Run this program in a git repository.
+#
+#     Where there are merge conflicts, it produces the following
+#     files:
+#
+#     -   versions of the files in question at the merge base, in our
+#         branch, and in the source branch (THEIRS):
+#
+#         -   <filename>--BASE.<ext>
+#         -   <filename>--OURS.<ext>
+#         -   <filename>--THEIRS.<ext>
+#
+#     -   diffs between the merge base and the target branch, and
+#         between the merge base and the source branch:
+#
+#         -   <filename>--BASE--OURS.<ext>.diff
+#         -   <filename>--BASE--THEIRS.<ext>.diff
+#
+#     -   and a `git log` list of commits from the merge base to either
+#         the target branch (OURS) or source branch (THEIRS):
+#
+#         -   <filename>--BASE--OURS.<ext>.log
+#         -   <filename>--BASE--THEIRS.<ext>.log
+#
+#     A good rule of thumb is the following:
+#
+#     -   Take the **larger** of the two .diff files, and copy its
+#         respective version (<filename>--OURS.<ext> or
+#         <filename>--THEIRS.<ext>) to the file name in conflict.
+#
+#     -   Take the **smaller** of the two .diff files, and apply it
+#         as a patch, either manually or using `patch`.
+#
+# .EXAMPLE 1
+#
+# Let's say after running `git-would-merge` you have the following
+# files now:
+#
+#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:41 awsLambda.js
+#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:44 awsLambda--BASE.js
+#     -rw-r--r-- 1 dse dse 1227 Oct  4 12:44 awsLambda--BASE--OURS.js.diff
+#     -rw-r--r-- 1 dse dse 1997 Oct  4 12:44 awsLambda--BASE--THEIRS.js.diff
+#     -rw-r--r-- 1 dse dse 3191 Oct  4 12:44 awsLambda--OURS.js
+#     -rw-r--r-- 1 dse dse 2222 Oct  4 12:44 awsLambda--OURS.js.log
+#     -rw-r--r-- 1 dse dse 2459 Oct  4 12:44 awsLambda--THEIRS.js
+#     -rw-r--r-- 1 dse dse 3273 Oct  4 12:44 awsLambda--THEIRS.js.log
+#
+# Because the smaller of the two diffs is between BASE and OURS,
+# you probably want to take the following steps:
+#
+# -   `cp awsLambda--THEIRS.js awsLambda.js`
+#
+# -   `patch -p1 awsLambda--BASE--OURS.js.diff`
+#     or do the same manually
+
 main () {
     # top level project directory
     local root="$(git rev-parse --show-toplevel)"
@@ -116,16 +176,34 @@ would-merge () {
         # git show ":1:${gitfilename}" >"${base}.tmp"
 
         # shitload o' diffs?
-        git show "${origHead}:${gitfilename}" >"${ours}.tmp"
-        git show "${mergeHead}:${gitfilename}" >"${theirs}.tmp"
-        git show "${mergeBase}:${gitfilename}" >"${base}.tmp"
 
-        mv "${ours}.tmp"   "${ours}"
-        mv "${theirs}.tmp" "${theirs}"
-        mv "${base}.tmp"   "${base}"
+        >&2 echo "orighead"
+        if git show "${origHead}:${gitfilename}" >"${ours}.tmp"  ; then
+            mv "${ours}.tmp"   "${ours}"
+        else
+            rm "${ours}.tmp"
+        fi
 
-        diff -u --strip-trailing-cr -B -b -w "${base}" "${ours}"   >"${baseOurs}.diff" || true
-        diff -u --strip-trailing-cr -B -b -w "${base}" "${theirs}" >"${baseTheirs}.diff" || true
+        >&2 echo "mergehead"
+        if git show "${mergeHead}:${gitfilename}" >"${theirs}.tmp" ; then
+            mv "${theirs}.tmp" "${theirs}"
+        else
+            rm "${theirs}.tmp"
+        fi
+
+        >&2 echo "mergebase"
+        if git show "${mergeBase}:${gitfilename}" >"${base}.tmp" ; then
+            mv "${base}.tmp"   "${base}"
+        else
+            rm "${base}.tmp"
+        fi
+
+        if [[ -e "${ours}" ]] ; then
+            diff -u --strip-trailing-cr -B -b -w "${base}" "${ours}"   >"${baseOurs}.diff" || true
+        fi
+        if [[ -e "${theirs}" ]] ; then
+            diff -u --strip-trailing-cr -B -b -w "${base}" "${theirs}" >"${baseTheirs}.diff" || true
+        fi
         # diff -b -w --word-diff "${base}" "${ours}"   >"${baseOurs}.wdiff" || true
         # diff -b -w --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
 
