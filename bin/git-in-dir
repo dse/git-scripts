@@ -11,8 +11,14 @@ MAIN () {
     local reset=$'\e'"[0m"
     local nopager=''
     local pipe=''
+    local git='git'
+    local nogit=''
     while (( $# )) && [[ "$1" == -* ]] ; do
         case "$1" in
+            -G|--no-git)
+                nogit=--no-git
+                git=''
+                ;;
             -w*)
                 width="${1#-w}"
                 ;;
@@ -56,9 +62,9 @@ MAIN () {
         cd "$1"
         shift
         if [[ -z "${prefix1}" ]] && [[ -z "${prefix2}" ]] ; then
-            P git $nopager "$@"
+            P $git $nopager "$@"
         else
-            P git $nopager -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
+            P $git $nopager -c color.ui=always "$@" | sed -E -e "1{s#^#${prefix1}#g;n;}" -e "s#^#${prefix2}#g"
         fi
     else
         >&2 echo "no directory specified"

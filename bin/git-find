@@ -17,8 +17,12 @@ MAIN () {
     local nopager=''
     local pipe=''
     local -i noheader=0
+    local nogit=''
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
+            -G|--no-git)
+                nogit=--no-git
+                ;;
             ---)
                 break
                 ;;
@@ -137,6 +141,7 @@ GIT-FIND () {
     local -a find2
     local -a find3
     local -a find
+
     if (( $# )) ; then
         if (( inline )) ; then
             find "$1" \
@@ -146,7 +151,7 @@ GIT-FIND () {
                  \! \( -name node_modules -prune \) \
                  -exec test -d '{}/.git' \; \
                  -prune \
-                 -exec git in-dir $nopager ${pipe:+"--pipe=${pipe}"} -p'[{}] ' {} "${gitcommand[@]}" \;
+                 -exec git in-dir $nogit $nopager ${pipe:+"--pipe=${pipe}"} -p'[{}] ' {} "${gitcommand[@]}" \;
         else
             # what to find
             find1=(
@@ -166,7 +171,7 @@ GIT-FIND () {
             # what action to take
             find3=(
                 -prune
-                -exec git in-dir ${pipe:+"--pipe=${pipe}"} {} "${gitcommand[@]}" \;
+                -exec git in-dir $nogit ${pipe:+"--pipe=${pipe}"} {} "${gitcommand[@]}" \;
             )
 
             if (( noheader )) ; then

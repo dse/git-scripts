@@ -16,7 +16,7 @@ temp1="$(mktemp)"
 temp2="$(mktemp)"
 
 filter () {
-    gsed -r \
+    sed -E \
          -e '/^UComments: (.*)$/s//UComments: xxx/' \
          -e '/^XUID: (.*)$/s//XUID: xxx/' \
          -e '/^CreationTime: (.*)$/s//CreationTime: xxx/' \
@@ -24,7 +24,7 @@ filter () {
 }
 
 filter2 () {
-    gsed \
+    sed \
          -e "s#${temp1}#/${path}#" \
          -e "s#${temp2}#/${path}#"
 }
