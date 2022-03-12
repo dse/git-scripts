@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+
+declare -a cmd
+
+for filename ; do
+    orig_filename="${filename}"
+    orig_dirname="$(dirname "${orig_filename}")"
+    orig_basename="$(basename "${orig_filename}")"
+    basename="$(echo "${orig_basename}" | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr '[A-Z]' '[a-z]')"
+    if [[ "${basename}" = "${orig_basename}" ]] ; then
+        continue
+    fi
+    cmd=(git mv "${orig_dirname}/${orig_basename}" "${orig_dirname}/${basename}")
+    >&2 echo "${cmd[@]@Q}"
+    "${cmd[@]}"
+done
