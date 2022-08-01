@@ -18,6 +18,12 @@ MAIN () {
     local pipe=''
     local -i noheader=0
     local nogit=''
+
+    # if executed as anything other than 'git find' or 'git-find'...
+    if [[ "$(basename "$0")" != "git-find" ]] ; then
+        nogit=--no-git
+    fi
+
     while (( $# )) && [[ "$1" == "-"* ]] ; do
         case "$1" in
             -G|--no-git)
@@ -91,6 +97,11 @@ MAIN () {
         shift
         findarguments+=("${arg}")
     done
+
+    if [[ ! -t 1 ]] ; then
+        green=''
+        reset=''
+    fi
 
     if (( ! ${#gitcommand[@]} )) ; then
         TAKE-ACTION GIT-FIND-LIST

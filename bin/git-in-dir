@@ -54,6 +54,10 @@ MAIN () {
         esac
         shift
     done
+    if [[ ! -t 1 ]] ; then
+        green=''
+        reset=''
+    fi
     if [[ "${prefix1}" != "" ]] ; then
         prefix1="${green}$(printf "%-${width}s" "${prefix1}")${reset}"
         prefix2="${green}$(printf "%-${width}s" "${prefix2}")${reset}"
