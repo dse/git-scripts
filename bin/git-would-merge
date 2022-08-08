@@ -73,6 +73,13 @@ main () {
     # top level project directory
     local root="$(git rev-parse --show-toplevel)"
 
+    local -a diff_options=()
+
+    while (( $# )) && [[ "$1" = -* ]] ; do
+        diff_options+=("$1")
+        shift
+    done
+
     if (( $# )) && [[ "$1" == "clean" ]] ; then
         clean
         exit 0
@@ -155,8 +162,8 @@ would-merge () {
           rm "${base}" || true
           rm "${baseOurs}.diff" || true
           rm "${baseTheirs}.diff" || true
-          rm "${baseOurs}.wdiff" || true
-          rm "${baseTheirs}.wdiff" || true ) >/dev/null 2>/dev/null
+          rm "${baseOurs}.w.diff" || true
+          rm "${baseTheirs}.w.diff" || true ) >/dev/null 2>/dev/null
 
         case "${filename}" in
             ./*)     gitfilename="${filename}"   ;;
@@ -198,14 +205,23 @@ would-merge () {
             rm "${base}.tmp"
         fi
 
+        local -a diff=(
+            # diff -u --strip-trailing-cr -B -b -w
+            git diff --no-index --ignore-cr-at-eol --ignore-blank-lines -b -w --color=always "${diff_options[@]}"
+        )
+
         if [[ -e "${ours}" ]] ; then
-            diff -u --strip-trailing-cr -B -b -w "${base}" "${ours}"   >"${baseOurs}.diff" || true
+            set -x
+            "${diff[@]}" "${base}" "${ours}"               >"${baseOurs}.diff" || true
+            "${diff[@]}" "${base}" "${ours}"   --word-diff >"${baseOurs}.w.diff" || true
+            set +x
         fi
         if [[ -e "${theirs}" ]] ; then
-            diff -u --strip-trailing-cr -B -b -w "${base}" "${theirs}" >"${baseTheirs}.diff" || true
+            set -x
+            "${diff[@]}" "${base}" "${theirs}"             >"${baseTheirs}.diff" || true
+            "${diff[@]}" "${base}" "${theirs}" --word-diff >"${baseTheirs}.w.diff" || true
+            set +x
         fi
-        # diff -b -w --word-diff "${base}" "${ours}"   >"${baseOurs}.wdiff" || true
-        # diff -b -w --word-diff "${base}" "${theirs}" >"${baseTheirs}.wdiff" || true
 
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${mergeHead}..${origHead}" -- "${gitfilename}" >"${ours}.log"
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${origHead}..${mergeHead}" -- "${gitfilename}" >"${theirs}.log"
@@ -215,7 +231,20 @@ would-merge () {
         echo "    merge head is $mergeHead"
         echo "    merge base is $mergeBase"
         echo "    Wrote the following files:"
-        ( /bin/ls -l -d "${base}" "${ours}" "${theirs}" "${ours}.log" "${theirs}.log" "${baseOurs}.diff" "${baseTheirs}.diff" "${baseOurs}.wdiff" "${baseTheirs}.wdiff" 2>/dev/null | sed 's/^/    /' ) || true
+
+        local -a files=(
+            "${base}"
+            "${ours}"
+            "${theirs}"
+            "${ours}.log"
+            "${theirs}.log"
+            "${baseOurs}.diff"
+            "${baseTheirs}.diff"
+            "${baseOurs}.w.diff"
+            "${baseTheirs}.w.diff"
+        )
+
+        ( /bin/ls -l -d "${files[@]}" 2>/dev/null | sed 's/^/    /' ) || true
 
         local noConflicts=1
 
