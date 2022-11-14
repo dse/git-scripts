@@ -77,6 +77,19 @@ sub wanted {
 
 sub doTheThing {
     my ($dir, $name) = @_;
+    my $kid = doTheFancyThing($dir, $name);
+    if ($kid == -1) {
+        # child may have been reaped
+        return;
+    }
+    my $exit = $? >> 8;
+    my $sig  = $? & 127;
+    my $dump = $? & 128;
+    # make of that what you will
+}
+
+sub doTheNormalThing {
+    my ($dir, $name) = @_;
     printf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
     my $pid = fork();
     die("$! :-(") if !defined $pid;
@@ -88,15 +101,7 @@ sub doTheThing {
         );
         exec(@cmd) or die("exec failed: $! :-(");
     }
-    my $kid = waitpid($pid, 0);
-    if ($kid == -1) {
-        # child may have been reaped
-        return;
-    }
-    my $exit = $? >> 8;
-    my $sig  = $? & 127;
-    my $dump = $? & 128;
-    # make of that what you will
+    return waitpid($pid, 0);
 }
 
 sub doTheFancyThing {
@@ -133,11 +138,6 @@ sub doTheFancyThing {
     fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $! :-(");
     $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $! :-(");
     fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $! :-(");
-
-    # my $flags = '';
-    # fcntl($stdoutRead, F_GETFL, $flags) or die("fcntl: $! :-(");
-    # $flags |= O_NONBLOCK;
-    # fcntl($stderrRead, F_SETFL, $flags) or die("fcntl: $! :-(");
 
     STDOUT->autoflush(1);
     STDERR->autoflush(1);
@@ -190,14 +190,5 @@ sub doTheFancyThing {
     }
     close($stdoutRead);
     close($stderrRead);
-
-    my $kid = waitpid($pid, 0);
-    if ($kid == -1) {
-        # child may have been reaped
-        return;
-    }
-    my $exit = $? >> 8;
-    my $sig  = $? & 127;
-    my $dump = $? & 128;
-    # make of that what you will
+    return waitpid($pid, 0);
 }
