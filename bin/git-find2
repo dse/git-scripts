@@ -92,14 +92,14 @@ sub doTheNormalThing {
     my ($dir, $name) = @_;
     printf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
     my $pid = fork();
-    die("$! :-(") if !defined $pid;
+    die("$!") if !defined $pid;
     if (!$pid) {                # child
-        chdir($dir) or die("chdir: $! :-(");
+        chdir($dir) or die("chdir: $!");
         my @cmd = (
             ($noGit ? () : ('git', '--no-pager')),
             @gitCommand,
         );
-        exec(@cmd) or die("exec failed: $! :-(");
+        exec(@cmd) or die("exec failed: $!");
     }
     return waitpid($pid, 0);
 }
@@ -110,23 +110,23 @@ sub doTheFancyThing {
     my $header = sprintf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
 
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
-    pipe($stdoutRead, $stdoutWrite) or die("pipe: $! :-(");
-    pipe($stderrRead, $stderrWrite) or die("pipe: $! :-(");
+    pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
+    pipe($stderrRead, $stderrWrite) or die("pipe: $!");
 
-    my $pid = fork() // die("fork: $! :-(");
+    my $pid = fork() // die("fork: $!");
     if (!$pid) {
         # child
-        chdir($dir) or die("chdir: $! :-(");
-        open(STDOUT, '>&', $stdoutWrite) or die("reopen: $! :-(");
-        open(STDERR, '>&', $stderrWrite) or die("reopen: $! :-(");
+        chdir($dir) or die("chdir: $!");
+        open(STDOUT, '>&', $stdoutWrite) or die("reopen: $!");
+        open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
         my @cmd = (
             ($noGit ? () : ('git', '--no-pager')),
             @gitCommand,
         );
-        exec(@cmd) or die("exec failed: $! :-(");
+        exec(@cmd) or die("exec failed: $!");
     }
-    close($stderrWrite) or die("close: $! :-(");
-    close($stdoutWrite) or die("close: $! :-(");
+    close($stderrWrite) or die("close: $!");
+    close($stdoutWrite) or die("close: $!");
 
     # for select
     my $rbits = '';
@@ -134,10 +134,10 @@ sub doTheFancyThing {
     vec($rbits, fileno($stderrRead), 1) = 1;
 
     # nonblocking I/O
-    my $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $! :-(");
-    fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $! :-(");
-    $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $! :-(");
-    fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $! :-(");
+    my $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!");
+    $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $!");
+    fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!");
 
     STDOUT->autoflush(1);
     STDERR->autoflush(1);
@@ -149,7 +149,7 @@ sub doTheFancyThing {
     while (1) {
         my $rout = $rbits;
         my $nfound = select($rout, undef, undef, undef);
-        die("select: $! :-(") if $nfound == -1;
+        die("select: $!") if $nfound == -1;
         last if $nfound == 0;
         my $hasStdout = vec($rout, fileno($stdoutRead), 1);
         my $hasStderr = vec($rout, fileno($stderrRead), 1);
@@ -160,7 +160,7 @@ sub doTheFancyThing {
                 my $bytes = sysread($stdoutRead, $data, 16384);
                 if (!defined $bytes) {
                     last if $!{EAGAIN};
-                    die("sysread: $! :-(");
+                    die("sysread: $!");
                 }
                 last if $bytes == 0;
                 if (defined $header) {
@@ -176,7 +176,7 @@ sub doTheFancyThing {
                 my $bytes = sysread($stderrRead, $data, 16384);
                 if (!defined $bytes) {
                     last if $!{EAGAIN};
-                    die("sysread: $! :-(");
+                    die("sysread: $!");
                 }
                 last if $bytes == 0;
                 if (defined $header) {
