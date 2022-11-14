@@ -22,27 +22,27 @@ shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
 #     -   versions of the files in question at the merge base, in our
 #         branch, and in the source branch (THEIRS):
 #
-#         -   <filename>--BASE.<ext>
-#         -   <filename>--OURS.<ext>
-#         -   <filename>--THEIRS.<ext>
+#         -   <filename>.GWM.BASE.<ext>
+#         -   <filename>.GWM.OURS.<ext>
+#         -   <filename>.GWM.THEIRS.<ext>
 #
 #     -   diffs between the merge base and the target branch, and
 #         between the merge base and the source branch:
 #
-#         -   <filename>--BASE--OURS.<ext>.diff
-#         -   <filename>--BASE--THEIRS.<ext>.diff
+#         -   <filename>.GWM.BASE--OURS.<ext>.diff
+#         -   <filename>.GWM.BASE--THEIRS.<ext>.diff
 #
 #     -   and a `git log` list of commits from the merge base to either
 #         the target branch (OURS) or source branch (THEIRS):
 #
-#         -   <filename>--BASE--OURS.<ext>.log
-#         -   <filename>--BASE--THEIRS.<ext>.log
+#         -   <filename>.GWM.BASE--OURS.<ext>.log
+#         -   <filename>.GWM.BASE--THEIRS.<ext>.log
 #
 #     A good rule of thumb is the following:
 #
 #     -   Take the **larger** of the two .diff files, and copy its
-#         respective version (<filename>--OURS.<ext> or
-#         <filename>--THEIRS.<ext>) to the file name in conflict.
+#         respective version (<filename>.GWM.OURS.<ext> or
+#         <filename>.GWM.THEIRS.<ext>) to the file name in conflict.
 #
 #     -   Take the **smaller** of the two .diff files, and apply it
 #         as a patch, either manually or using `patch`.
@@ -53,20 +53,20 @@ shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
 # files now:
 #
 #     -rw-r--r-- 1 dse dse 2952 Oct  4 12:41 awsLambda.js
-#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:44 awsLambda--BASE.js
-#     -rw-r--r-- 1 dse dse 1227 Oct  4 12:44 awsLambda--BASE--OURS.js.diff
-#     -rw-r--r-- 1 dse dse 1997 Oct  4 12:44 awsLambda--BASE--THEIRS.js.diff
-#     -rw-r--r-- 1 dse dse 3191 Oct  4 12:44 awsLambda--OURS.js
-#     -rw-r--r-- 1 dse dse 2222 Oct  4 12:44 awsLambda--OURS.js.log
-#     -rw-r--r-- 1 dse dse 2459 Oct  4 12:44 awsLambda--THEIRS.js
-#     -rw-r--r-- 1 dse dse 3273 Oct  4 12:44 awsLambda--THEIRS.js.log
+#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:44 awsLambda.GWM.BASE.js
+#     -rw-r--r-- 1 dse dse 1227 Oct  4 12:44 awsLambda.GWM.BASE--OURS.js.diff
+#     -rw-r--r-- 1 dse dse 1997 Oct  4 12:44 awsLambda.GWM.BASE--THEIRS.js.diff
+#     -rw-r--r-- 1 dse dse 3191 Oct  4 12:44 awsLambda.GWM.OURS.js
+#     -rw-r--r-- 1 dse dse 2222 Oct  4 12:44 awsLambda.GWM.OURS.js.log
+#     -rw-r--r-- 1 dse dse 2459 Oct  4 12:44 awsLambda.GWM.THEIRS.js
+#     -rw-r--r-- 1 dse dse 3273 Oct  4 12:44 awsLambda.GWM.THEIRS.js.log
 #
 # Because the smaller of the two diffs is between BASE and OURS,
 # you probably want to take the following steps:
 #
-# -   `cp awsLambda--THEIRS.js awsLambda.js`
+# -   `cp awsLambda.GWM.THEIRS.js awsLambda.js`
 #
-# -   `patch -p1 awsLambda--BASE--OURS.js.diff`
+# -   `patch -p1 awsLambda.GWM.BASE--OURS.js.diff`
 #     or do the same manually
 
 main () {
@@ -79,6 +79,13 @@ main () {
         diff_options+=("$1")
         shift
     done
+
+    if (( $# )) && [[ "$1" == "help" ]] ; then
+        echo "usage:"
+        echo "    git-would-merge help"
+        echo "    git-would-merge clean"
+        echo "    git-would-merge"
+    fi
 
     if (( $# )) && [[ "$1" == "clean" ]] ; then
         clean
@@ -108,6 +115,7 @@ main () {
     grep -F -x '*--OURS*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${excludeFile}"
     grep -F -x '*--THEIRS*' "${excludeFile}" >/dev/null 2>/dev/null || echo '*--THEIRS*' >>"${excludeFile}"
     grep -F -x '*.tmp'      "${excludeFile}" >/dev/null 2>/dev/null || echo '*.tmp'      >>"${excludeFile}"
+    grep -F -x '*.GWM.*'    "${excludeFile}" >/dev/null 2>/dev/null || echo '*.GWM.*'    >>"${excludeFile}"
 
     local filename=""
     local -a filenames=()
@@ -132,38 +140,40 @@ would-merge () {
         dirname="$(dirname "${filename}")"
         basename="$(basename "${filename}")"
         case "${basename}" in
-            .*.*)
-                basebasename="${basename%.*}"
-                ext=".${basename##*.}"
+            .*.*)                             # '.foo.bar'
+                basebasename="${basename%.*}" # '.foo'
+                ext=".${basename##*.}"        # .bar'
                 ;;
-            .*)
-                basebasename="${basename}"
-                ext=""
+            .*)                            # '.foo'
+                basebasename="${basename}" # '.foo'
+                ext=""                     # ''
                 ;;
-            *.*)
-                basebasename="${basename%.*}"
-                ext=".${basename##*.}"
+            *.*)                              # 'foo.bar'
+                basebasename="${basename%.*}" # 'foo'
+                ext=".${basename##*.}"        # '.bar'
                 ;;
-            *)
-                basebasename="${basename}"
-                ext=""
+            *)                             # 'foo'
+                basebasename="${basename}" # 'foo'
+                ext=""                     # ''
                 ;;
         esac
 
-        base="${dirname}/${basebasename}--BASE${ext}"
-        ours="${dirname}/${basebasename}--OURS${ext}"
-        theirs="${dirname}/${basebasename}--THEIRS${ext}"
-
-        baseOurs="${dirname}/${basebasename}--BASE--OURS${ext}"
-        baseTheirs="${dirname}/${basebasename}--BASE--THEIRS${ext}"
+        base="${dirname}/${basebasename}.GWM.BASE${ext}"
+        ours="${dirname}/${basebasename}.GWM.OURS${ext}"
+        theirs="${dirname}/${basebasename}.GWM.THEIRS${ext}"
+        base2="${dirname}/${basebasename}.GWM.BASE.2${ext}"
+        ours2="${dirname}/${basebasename}.GWM.OURS.2${ext}"
+        theirs2="${dirname}/${basebasename}.GWM.THEIRS.2${ext}"
+        fromBaseToOurs="${dirname}/${basebasename}.GWM.BASE--OURS${ext}"
+        fromBaseToTheirs="${dirname}/${basebasename}.GWM.BASE--THEIRS${ext}"
 
         ( rm "${ours}" || true
           rm "${theirs}" || true
           rm "${base}" || true
-          rm "${baseOurs}.diff" || true
-          rm "${baseTheirs}.diff" || true
-          rm "${baseOurs}.w.diff" || true
-          rm "${baseTheirs}.w.diff" || true ) >/dev/null 2>/dev/null
+          rm "${fromBaseToOurs}.diff" || true
+          rm "${fromBaseToTheirs}.diff" || true
+          rm "${fromBaseToOurs}.w.diff" || true
+          rm "${fromBaseToTheirs}.w.diff" || true ) >/dev/null 2>/dev/null
 
         case "${filename}" in
             ./*)     gitfilename="${filename}"   ;;
@@ -172,77 +182,63 @@ would-merge () {
             *)       gitfilename="./${filename}" ;;
         esac
 
-        # :0: => stage 0 entry
-        # :1: => common ancestor
-        # :2: => our branch   a/k/a target branch
-        # :3: => their branch a/k/a branch from which we're merging
+        local -a files
 
-        # nested conflicts?
-        # git show ":2:${gitfilename}" >"${ours}.tmp"
-        # git show ":3:${gitfilename}" >"${theirs}.tmp"
-        # git show ":1:${gitfilename}" >"${base}.tmp"
+        git show ":1:${gitfilename}" >"${base}"
+        git show ":2:${gitfilename}" >"${ours}"
+        git show ":3:${gitfilename}" >"${theirs}"
 
-        # shitload o' diffs?
+        files+=(
+            "${base}"
+            "${ours}"
+            "${theirs}"
+        )
 
-        >&2 echo "orighead"
-        if git show "${origHead}:${gitfilename}" >"${ours}.tmp"  ; then
-            mv "${ours}.tmp"   "${ours}"
-        else
-            rm "${ours}.tmp"
-        fi
+        git show "${mergeBase}:${gitfilename}" >"${base2}"
+        git show "${origHead}:${gitfilename}"  >"${ours2}"
+        git show "${mergeHead}:${gitfilename}" >"${theirs2}"
 
-        >&2 echo "mergehead"
-        if git show "${mergeHead}:${gitfilename}" >"${theirs}.tmp" ; then
-            mv "${theirs}.tmp" "${theirs}"
-        else
-            rm "${theirs}.tmp"
-        fi
-
-        >&2 echo "mergebase"
-        if git show "${mergeBase}:${gitfilename}" >"${base}.tmp" ; then
-            mv "${base}.tmp"   "${base}"
-        else
-            rm "${base}.tmp"
-        fi
+        if diff "${base}"   "${base2}"   ; then rm "${base2}"   ; else >&2 echo "WARNING: :1: and merge base ${mergeBase} differ" ; files+=("${base2}")   ; fi
+        if diff "${ours}"   "${ours2}"   ; then rm "${ours2}"   ; else >&2 echo "WARNING: :2: and ours ${ours} differ"            ; files+=("${ours2}")   ; fi
+        if diff "${theirs}" "${theirs2}" ; then rm "${theirs2}" ; else >&2 echo "WARNING: :2: and ours ${theirs} differ"          ; files+=("${theirs2}") ; fi
 
         local -a diff=(
             # diff -u --strip-trailing-cr -B -b -w
-            git diff --no-index --ignore-cr-at-eol --ignore-blank-lines -b -w --color=always "${diff_options[@]}"
+            git diff --no-index --ignore-cr-at-eol --ignore-blank-lines -b -w --color=never "${diff_options[@]}"
         )
 
-        if [[ -e "${ours}" ]] ; then
-            set -x
-            "${diff[@]}" "${base}" "${ours}"               >"${baseOurs}.diff" || true
-            "${diff[@]}" "${base}" "${ours}"   --word-diff >"${baseOurs}.w.diff" || true
-            set +x
-        fi
-        if [[ -e "${theirs}" ]] ; then
-            set -x
-            "${diff[@]}" "${base}" "${theirs}"             >"${baseTheirs}.diff" || true
-            "${diff[@]}" "${base}" "${theirs}" --word-diff >"${baseTheirs}.w.diff" || true
-            set +x
-        fi
+        "${diff[@]}"                "${base}" "${ours}"               >"${fromBaseToOurs}.diff" || true
+        "${diff[@]}"                "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.diff" || true
+        "${diff[@]}"                "${base}" "${theirs}"             >"${fromBaseToTheirs}.diff" || true
+        "${diff[@]}"                "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.diff" || true
+
+        "${diff[@]}" --color=always "${base}" "${ours}"               >"${fromBaseToOurs}.c.diff" || true
+        "${diff[@]}" --color=always "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.c.diff" || true
+        "${diff[@]}" --color=always "${base}" "${theirs}"             >"${fromBaseToTheirs}.c.diff" || true
+        "${diff[@]}" --color=always "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.c.diff" || true
+
+        files+=(
+            "${fromBaseToOurs}.diff"
+            "${fromBaseToOurs}.w.diff"
+            "${fromBaseToTheirs}.diff"
+            "${fromBaseToTheirs}.w.diff"
+            "${fromBaseToOurs}.c.diff"
+            "${fromBaseToOurs}.w.c.diff"
+            "${fromBaseToTheirs}.c.diff"
+            "${fromBaseToTheirs}.w.c.diff"
+        )
 
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${mergeHead}..${origHead}" -- "${gitfilename}" >"${ours}.log"
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${origHead}..${mergeHead}" -- "${gitfilename}" >"${theirs}.log"
 
-        echo "${filename}"
-        echo "    orig head is $origHead"
-        echo "    merge head is $mergeHead"
-        echo "    merge base is $mergeBase"
-        echo "    Wrote the following files:"
-
-        local -a files=(
-            "${base}"
-            "${ours}"
-            "${theirs}"
+        files+=(
             "${ours}.log"
             "${theirs}.log"
-            "${baseOurs}.diff"
-            "${baseTheirs}.diff"
-            "${baseOurs}.w.diff"
-            "${baseTheirs}.w.diff"
         )
+
+        echo "${filename}"
+        echo "    base is ${mergeBase}; ours is ${origHead}; source branch is ${mergeHead}"
+        echo "    Wrote the following files:"
 
         ( /bin/ls -l -d "${files[@]}" 2>/dev/null | sed 's/^/    /' ) || true
 
@@ -267,6 +263,7 @@ clean () {
          \! \( -type d -name .git -prune \) \
          \! \( -type d -name node_modules -prune \) \
          -type f \( \
+         -name '*.GWM.*' -o \
          -name '*--OURS*' -o \
          -name '*--THEIRS*' -o \
          -name '*--BASE*' \) -exec rm -v {} +
