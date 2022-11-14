@@ -65,6 +65,7 @@ sub wanted {
     return if !scalar(@lstat);
     return unless -d _;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
+    # print STDERR ("$File::Find::name\e[K\r");
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
@@ -150,7 +151,7 @@ sub doTheFancyThing {
         my $rout = $rbits;
         my $nfound = select($rout, undef, undef, undef);
         die("select: $!") if $nfound == -1;
-        last if $nfound == 0;
+        # last if $nfound == 0;
         my $hasStdout = vec($rout, fileno($stdoutRead), 1);
         my $hasStderr = vec($rout, fileno($stderrRead), 1);
         last if !$hasStdout && !$hasStderr;
