@@ -1,0 +1,97 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use open qw(locale);
+
+use File::Find qw(find);
+use Cwd qw(getcwd);
+
+our $GREEN = "\e[0;32m";
+our $RESET = "\e[m";
+
+our $verbose = 0;
+our $noGit;
+our $list;
+our $inline;
+our $noHeader;
+our $noPager;
+our $minDepth;
+our $maxDepth;
+our $pipe;
+
+use Getopt::Long;
+Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
+Getopt::Long::GetOptions(
+    'G|no-git' => \$noGit,
+    'l|list'   => \$list,
+    'v|verbose+' => \$verbose,
+    'i|inline'   => \$inline,
+    'no-header'  => \$noHeader,
+    'no-pager'   => \$noPager,
+) or die();
+
+my @gitCommand = ();
+
+while (scalar @ARGV) {
+    my $arg = shift(@ARGV);
+    last if ($arg eq '---');
+    push(@gitCommand, $arg);
+}
+if (!scalar @gitCommand) {
+    $list = 1;
+}
+
+my @findArguments = @ARGV;
+if (!scalar @findArguments) {
+    @findArguments = ('.');
+}
+
+if (!-t 1) {
+    $GREEN = '';
+    $RESET = '';
+}
+
+gitFind();
+
+sub gitFind {
+    find(\&wanted, @findArguments);
+}
+
+sub wanted {
+    my @lstat = lstat($_);
+    return if !scalar(@lstat);
+    return unless -d _;
+    return $File::Find::prune = 1 if $_ eq 'node_modules';
+    if (-d "$_/.git") {
+        if ($list) {
+            print($File::Find::name, "\n");
+        } else {
+            doTheThing($_, $File::Find::name);
+        }
+        return $File::Find::prune = 1;
+    }
+}
+
+sub doTheThing {
+    my ($dir, $name) = @_;
+    printf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
+    my $pid = fork();
+    die("$!\n") if !defined $pid;
+    if (!$pid) {                # child
+        chdir($dir) or die("chdir: $!\n");
+        my @cmd = (
+            ($noGit ? () : ('git', '--no-pager')),
+            @gitCommand,
+        );
+        exec(@cmd) or die("exec failed: $!\n");
+    }
+    my $kid = waitpid($pid, 0);
+    if ($kid == -1) {
+        # child may have been reaped
+        return;
+    }
+    my $exit = $? >> 8;
+    my $sig  = $? & 127;
+    my $dump = $? & 128;
+    # make of that what you will
+}
