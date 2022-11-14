@@ -2,6 +2,9 @@
 set -o errexit
 set -o pipefail
 set -o nounset
+# shopt -s lastpipe
+
+# uses git-in-dir
 
 # git find [<option> ...] <git-command> <git-command-arguments> [--- <directories|repositories>]
 
