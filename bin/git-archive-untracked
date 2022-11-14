@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+top="$(git rev-parse --show-toplevel)"
+proj="$(basename "${top}")"
+
+archive="$(mktemp "${top}/../${proj}-untracked-XXXXXXXXXX.tar.gz")"
+
+cd "${top}"
+
+git ls-files --others --exclude-standard -z | tar --create --gzip --file="${archive}" --null --files-from=-
+>&2 echo "created ${archive}"
