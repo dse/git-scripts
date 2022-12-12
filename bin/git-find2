@@ -8,6 +8,7 @@ use Cwd qw(getcwd);
 use IO::Handle;
 use Fcntl;
 
+our $CLR_EOL = "\e[K";
 our $GREEN = "\e[0;32m";
 our $RESET = "\e[m";
 our $BYTES = 16384;
@@ -21,6 +22,7 @@ our $noPager;
 our $minDepth;
 our $maxDepth;
 our $pipe;
+our $progress;
 
 use Getopt::Long;
 Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
@@ -29,6 +31,7 @@ Getopt::Long::GetOptions(
     'l|list'   => \$list,
     'v|verbose+' => \$verbose,
     'i|inline'   => \$inline,
+    'p|progress' => \$progress,
     'no-header'  => \$noHeader,
     'no-pager'   => \$noPager,
 ) or die();
@@ -114,16 +117,18 @@ sub doTheFancyThing {
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
 
+    my @cmd = (
+        ($noGit ? () : ('git', '--no-pager')),
+        @gitCommand,
+    );
+    warn("@cmd\n");
+
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         # child
         chdir($dir) or die("chdir: $!");
         open(STDOUT, '>&', $stdoutWrite) or die("reopen: $!");
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
-        my @cmd = (
-            ($noGit ? () : ('git', '--no-pager')),
-            @gitCommand,
-        );
         exec(@cmd) or die("exec failed: $!");
     }
     close($stderrWrite) or die("close: $!");
@@ -147,14 +152,21 @@ sub doTheFancyThing {
     binmode($stdoutRead);
     binmode($stderrRead);
 
+    if ($progress) {
+        print STDOUT ("\r", $CLR_EOL, $GREEN, "==> $name <==", $RESET);
+    }
+
     while (1) {
         my $rout = $rbits;
+        #                   rbits  wbits  ebits  timeout
         my $nfound = select($rout, undef, undef, undef);
         die("select: $!") if $nfound == -1;
         # last if $nfound == 0;
         my $hasStdout = vec($rout, fileno($stdoutRead), 1);
         my $hasStderr = vec($rout, fileno($stderrRead), 1);
-        last if !$hasStdout && !$hasStderr;
+        if (!$hasStdout && !$hasStderr) {
+            last;
+        }
         if ($hasStdout) {
             while (1) {
                 my $data;
@@ -165,6 +177,7 @@ sub doTheFancyThing {
                 }
                 last if $bytes == 0;
                 if (defined $header) {
+                    print ("\r", $CLR_EOL) if $progress;
                     print STDOUT $header;
                     $header = undef;
                 }
@@ -181,6 +194,7 @@ sub doTheFancyThing {
                 }
                 last if $bytes == 0;
                 if (defined $header) {
+                    print ("\r", $CLR_EOL) if $progress;
                     print STDOUT $header;
                     $header = undef;
                 }
@@ -193,3 +207,14 @@ sub doTheFancyThing {
     close($stderrRead);
     return waitpid($pid, 0);
 }
+
+# C:
+#     int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+#     - only monitors fd numbers less than FD_SETSIZE
+#     - poll(2) and epoll(7) do not have this limitation
+#     - exceptfds monitors for exceptional conditions; see poll(2) § POLLPRI
+#     - if timeout is NULL, select blocks indefinitely
+#     - if timeout is zero, select returns immediately (for polling)
+#     - on select, select() returns the # of fds contained in the three returned fd sets
+# Perl:
+#     select RBITS,WBITS,EBITS,TIMEOUT
