@@ -8,11 +8,8 @@ use Cwd qw(getcwd);
 use IO::Handle;
 use Fcntl;
 use Term::ANSIColor;
-
-our $CLR_EOL = "\e[K";
-our $GREEN = "\e[0;32m";
-our $RESET = "\e[m";
-our $BYTES = 16384;
+use IO::Select;
+use Scalar::Util qw(refaddr);
 
 our $verbose = 0;
 our $noGit;
@@ -25,6 +22,9 @@ our $maxDepth;
 our $pipe;
 our $progress;
 our @gitCommand;
+our @exclude;
+our $exitCode = 0;
+our @failedNames;
 
 our $TTY;
 open($TTY, '>', '/dev/tty') or undef $TTY;
@@ -35,6 +35,7 @@ sub main {
     use Getopt::Long;
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
     Getopt::Long::GetOptions(
+        'x|exclude=s' => \@exclude,
         'G|no-git' => \$noGit,
         'l|list'   => \$list,
         'v|verbose+' => \$verbose,
@@ -58,18 +59,20 @@ sub main {
         @findArguments = ('.');
     }
 
-    if (!-t 1) {
-        $GREEN = '';
-        $RESET = '';
-    }
-
     find(\&wanted, @findArguments);
+    if (scalar @failedNames) {
+        warn("The following repositories had issues:\n");
+        warn("    $_\n") foreach @failedNames;
+    }
+    exit($exitCode);
 }
 
 sub wanted {
     my @lstat = lstat($_);
     return if !scalar(@lstat);
     return unless -d _;
+    my $filename = $_;
+    return if scalar @exclude && grep { $filename eq $_ } @exclude;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
     if (-d "$_/.git") {
         if ($list) {
@@ -85,23 +88,19 @@ sub doTheThing {
     my ($dir, $name) = @_;
     my $kid = doTheFancyThing($dir, $name);
     if ($kid == -1) {
-        # child may have been reaped
         return;
     }
-    my $exit = $? >> 8;
-    my $sig  = $? & 127;
-    my $dump = $? & 128;
-    # make of that what you will
+    my ($exit, $sig, $dump, $errno, $errid, $errmsg) = exit_status();
+    if ($exit || $sig || $dump || $errno) {
+        $exitCode = 1;
+        push(@failedNames, $name);
+    }
 }
 
 sub doTheNormalThing {
     my ($dir, $name) = @_;
     my $msg = "==> ${name} <==";
-    if (-t 1) {
-        print(colored('green', $msg), "\n");
-    } else {
-        print($msg, "\n");
-    }
+    print(msg($name), "\n");
     my $pid = fork();
     die("$!") if !defined $pid;
     if (!$pid) {                # child
@@ -115,125 +114,130 @@ sub doTheNormalThing {
     return waitpid($pid, 0);
 }
 
+use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
+
 sub doTheFancyThing {
     my ($dir, $name) = @_;
-
-    my $header;
-
+    my $msg = msg($name);
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
-
-    my @cmd = (
-        ($noGit ? () : ('git', '--no-pager')),
-        @gitCommand,
-    );
-
+    my @cmd = (($noGit ? () : ('git', '--no-pager')), @gitCommand);
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
         # child
         chdir($dir) or die("chdir: $!");
         open(STDOUT, '>&', $stdoutWrite) or die("reopen: $!");
         open(STDERR, '>&', $stderrWrite) or die("reopen: $!");
+        binmode($stdoutWrite);  # on account of we're doing sysreads
+        binmode($stderrWrite);  # ditto
         exec(@cmd) or die("exec failed: $!");
     }
+    binmode($stdoutRead);       # on account of we're doing sysreads
+    binmode($stderrRead);       # ditto
+    # parent
     close($stderrWrite) or die("close: $!");
     close($stdoutWrite) or die("close: $!");
-
-    # for select
-    my $rbits = '';
-    vec($rbits, fileno($stdoutRead), 1) = 1;
-    vec($rbits, fileno($stderrRead), 1) = 1;
-
-    # nonblocking I/O.  is this necessary?
-    my $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!");
-    $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $!");
-    fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!");
-
+    my $select = IO::Select->new($stdoutRead, $stderrRead);
     STDOUT->autoflush(1);
     STDERR->autoflush(1);
-    binmode(STDOUT);
-    binmode(STDERR);
-    binmode($stdoutRead);
-    binmode($stderrRead);
 
-    if ($progress) {
-        print STDOUT ("\r", $CLR_EOL, $GREEN, "==> $name <==", $RESET);
+    # handles need to be non-blocking on account of select tells us which
+    # fds are ready to read without blocking.
+    {
+        my $flags;
+        $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $!");
+        fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
+        $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $!");
+        fcntl($stderrRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!\n");
     }
 
-    while (1) {
-        if (!vec($rbits, fileno($stdoutRead), 1) && !vec($rbits, fileno($stderrRead), 1)) {
-            last;
-        }
-        my $rout = $rbits;
-        my $nfound = select($rout, undef, undef, undef);
-        #                   rbits  wbits  ebits  timeout
-        die("select: $!") if $nfound == -1;
-        my $hasStdout = vec($rout, fileno($stdoutRead), 1);
-        my $hasStderr = vec($rout, fileno($stderrRead), 1);
-        if (!$hasStdout && !$hasStderr) {
-            last;
-        }
-        if ($hasStdout) {
-            while (1) {
-                if (eof($stdoutRead)) {
-                    vec($rbits, fileno($stdoutRead), 1) = 0;
-                    last;
-                }
-                my $data;
-                my $bytes = sysread($stdoutRead, $data, 16384);
-                if (!defined $bytes) {
-                    last if $!{EAGAIN};
-                    die("sysread: $!");
-                }
-                last if $bytes == 0;
-                if (defined $header) {
-                    print ("\r", $CLR_EOL) if $progress;
-                    print STDOUT $header;
-                    $header = undef;
-                }
-                print STDOUT $data;
+    my $hasStdout;
+    my $hasStderr;
+
+    my $printed = 0;
+    do {
+        $! = 0;
+        my @ready = $select->can_read();
+        $hasStdout = grep { refaddr($_) == refaddr($stdoutRead) } @ready;
+        $hasStderr = grep { refaddr($_) == refaddr($stderrRead) } @ready;
+        while ($hasStdout) {
+            my $data;
+            my $bytes = sysread($stdoutRead, $data, 4096);
+            if (!defined $bytes) {
+                last if ($!{EAGAIN}); # there'll be more bytes to read i guess
+                my $errid = errid();
+                warn("sysread stdout: $errid $!\n");
             }
-        }
-        if ($hasStderr) {
-            while (1) {
-                if (eof($stderrRead)) {
-                    vec($rbits, fileno($stderrRead), 1) = 0;
-                    last;
+            if (!$bytes) {
+                if (!close($stdoutRead)) {
+                    my ($exit, $sig, $dump, $errno) = exit_status();
+                    if ($exit || $sig || $dump || $errno) {
+                        $exitCode = 1;
+                        push(@failedNames, $name);
+                    }
                 }
-                my $data;
-                my $bytes = sysread($stderrRead, $data, 16384);
-                if (!defined $bytes) {
-                    last if $!{EAGAIN};
-                    die("sysread: $!");
-                }
-                last if $bytes == 0;
-                if (defined $header) {
-                    print ("\r", $CLR_EOL) if $progress;
-                    print STDOUT $header;
-                    $header = undef;
-                }
-                print STDERR $data;
+                $hasStdout = 0;
+                $select->remove($stdoutRead);
+                last;
             }
+            print("$msg\n") if !$printed++;
+            print STDOUT $data;
         }
-        last if eof($stdoutRead) && eof($stderrRead);
-    }
-    close($stdoutRead);
-    close($stderrRead);
+        while ($hasStderr) {
+            my $data;
+            my $bytes = sysread($stderrRead, $data, 4096);
+            if (!defined $bytes) {
+                last if ($!{EAGAIN}); # there'll be more bytes to read i guess
+                my $errid = errid();
+                warn("sysread stderr: $errid $!\n");
+            }
+            if (!$bytes) {
+                if (!close($stderrRead)) {
+                    my ($exit, $sig, $dump, $errno) = exit_status();
+                    if ($exit || $sig || $dump || $errno) {
+                        $exitCode = 1;
+                        push(@failedNames, $name);
+                    }
+                }
+                $hasStderr = 0;
+                $select->remove($stderrRead);
+                last;
+            }
+            print("$msg\n") if !$printed++;
+            print STDERR $data;
+        }
+    } while ($hasStdout || $hasStderr);
     return waitpid($pid, 0);
 }
 
-# C:
-#     int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
-#     - only monitors fd numbers less than FD_SETSIZE
-#     - poll(2) and epoll(7) do not have this limitation
-#     - exceptfds monitors for exceptional conditions; see poll(2) § POLLPRI
-#     - if timeout is NULL, select blocks indefinitely
-#     - if timeout is zero, select returns immediately (for polling)
-#     - on select, select() returns the # of fds contained in the three returned fd sets
-# Perl:
-#     select RBITS, WBITS, EBITS, TIMEOUT
-#     sysread FH, SCALAR, LENGTH, OFFSET
-#     - attempt to read LENGTH bytes
-#     - by
+sub msg {
+    my ($name) = @_;
+    my $msg = "==> $name <==";
+    return colored(['green'], $msg) if -t 1;
+    return $msg;
+}
+
+sub errid {
+    my ($errid) = grep { $!{$_} } keys %!;
+    return $errid;
+}
+
+sub exit_status {
+    my $exit = $? >> 8;
+    my $sig  = $? & 127;
+    my $dump = $? & 128;
+    my $errno = 0 + $!;
+    my $errid = (grep { $!{$_} } keys %!)[0];
+    my $errmsg = "$!";
+    return ($exit, $sig, $dump, $errno, $errid, $errmsg);
+}
+
+# select waits until one of the fds is ready for reading or writing
+# without blocking.
+
+# use poll or epoll to monitor fds >= FD_SETSIZE.
+
+# select may update the timeout argument; pselect will not.
+
+# pselect has a sigmask argument.
