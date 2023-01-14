@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use open qw(locale);
+use open qw(:locale);
 
 use File::Find qw(find);
 use Cwd qw(getcwd);
@@ -139,7 +139,7 @@ sub doTheFancyThing {
     vec($rbits, fileno($stdoutRead), 1) = 1;
     vec($rbits, fileno($stderrRead), 1) = 1;
 
-    # nonblocking I/O
+    # nonblocking I/O.  is this necessary?
     my $flags = fcntl($stdoutRead, F_GETFL, 0) or die("fcntl: $!");
     fcntl($stdoutRead, F_SETFL, $flags | O_NONBLOCK) or die("fcntl: $!");
     $flags = fcntl($stderrRead, F_GETFL, 0) or die("fcntl: $!");
@@ -157,11 +157,13 @@ sub doTheFancyThing {
     }
 
     while (1) {
+        if (!vec($rbits, fileno($stdoutRead), 1) && !vec($rbits, fileno($stderrRead), 1)) {
+            last;
+        }
         my $rout = $rbits;
-        #                   rbits  wbits  ebits  timeout
         my $nfound = select($rout, undef, undef, undef);
+        #                   rbits  wbits  ebits  timeout
         die("select: $!") if $nfound == -1;
-        # last if $nfound == 0;
         my $hasStdout = vec($rout, fileno($stdoutRead), 1);
         my $hasStderr = vec($rout, fileno($stderrRead), 1);
         if (!$hasStdout && !$hasStderr) {
@@ -169,6 +171,10 @@ sub doTheFancyThing {
         }
         if ($hasStdout) {
             while (1) {
+                if (eof($stdoutRead)) {
+                    vec($rbits, fileno($stdoutRead), 1) = 0;
+                    last;
+                }
                 my $data;
                 my $bytes = sysread($stdoutRead, $data, 16384);
                 if (!defined $bytes) {
@@ -186,6 +192,10 @@ sub doTheFancyThing {
         }
         if ($hasStderr) {
             while (1) {
+                if (eof($stderrRead)) {
+                    vec($rbits, fileno($stderrRead), 1) = 0;
+                    last;
+                }
                 my $data;
                 my $bytes = sysread($stderrRead, $data, 16384);
                 if (!defined $bytes) {
@@ -217,4 +227,7 @@ sub doTheFancyThing {
 #     - if timeout is zero, select returns immediately (for polling)
 #     - on select, select() returns the # of fds contained in the three returned fd sets
 # Perl:
-#     select RBITS,WBITS,EBITS,TIMEOUT
+#     select RBITS, WBITS, EBITS, TIMEOUT
+#     sysread FH, SCALAR, LENGTH, OFFSET
+#     - attempt to read LENGTH bytes
+#     - by
