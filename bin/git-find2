@@ -115,6 +115,7 @@ sub doTheNormalThing {
 }
 
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
+use constant LINEBUF => 1;
 
 sub doTheFancyThing {
     my ($dir, $name) = @_;
@@ -154,6 +155,8 @@ sub doTheFancyThing {
 
     my $hasStdout;
     my $hasStderr;
+    my $buf1 = new My::LineBuf;
+    my $buf2 = new My::LineBuf;
 
     my $printed = 0;
     do {
@@ -182,7 +185,8 @@ sub doTheFancyThing {
                 last;
             }
             print("$msg\n") if !$printed++;
-            print STDOUT $data;
+            $buf1->append($data);
+            print STDOUT $buf1->read($data);
         }
         while ($hasStderr) {
             my $data;
@@ -205,9 +209,12 @@ sub doTheFancyThing {
                 last;
             }
             print("$msg\n") if !$printed++;
-            print STDERR $data;
+            $buf2->append($data);
+            print STDERR $buf2->read($data);
         }
     } while ($hasStdout || $hasStderr);
+    print STDOUT $buf1->finish();
+    print STDERR $buf2->finish();
     return waitpid($pid, 0);
 }
 
@@ -231,6 +238,37 @@ sub exit_status {
     my $errid = (grep { $!{$_} } keys %!)[0];
     my $errmsg = "$!";
     return ($exit, $sig, $dump, $errno, $errid, $errmsg);
+}
+
+package My::LineBuf {
+    sub new { return bless({ data => '' }, shift); }
+    sub append {
+        my ($self, $data) = @_;
+        $self->{data} .= $data;
+    }
+    sub read {
+        my ($self) = @_;
+        my $index = rindex($self->{data}, "\n");
+        if ($index == -1) {
+            return '';
+        }
+        if ($index == length($self->{data}) - 1) {
+            my $data = $self->{data};
+            $self->{data} = '';
+            return $data;
+        }
+        my $data = substr($self->{data}, 0, $index + 1);
+        $self->{data} = substr($self->{data}, $index + 1);
+        return $data;
+    }
+    sub finish {
+        my ($self) = @_;
+        my $data = $self->{data};
+        $self->{data} = '';
+        return '' if !length $data;
+        $data .= "\n" if substr($data, -1) ne "\n";
+        return $data;
+    }
 }
 
 # select waits until one of the fds is ready for reading or writing
