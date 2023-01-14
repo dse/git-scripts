@@ -7,6 +7,7 @@ use File::Find qw(find);
 use Cwd qw(getcwd);
 use IO::Handle;
 use Fcntl;
+use Term::ANSIColor;
 
 our $CLR_EOL = "\e[K";
 our $GREEN = "\e[0;32m";
@@ -23,43 +24,45 @@ our $minDepth;
 our $maxDepth;
 our $pipe;
 our $progress;
+our @gitCommand;
 
-use Getopt::Long;
-Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
-Getopt::Long::GetOptions(
-    'G|no-git' => \$noGit,
-    'l|list'   => \$list,
-    'v|verbose+' => \$verbose,
-    'i|inline'   => \$inline,
-    'p|progress' => \$progress,
-    'no-header'  => \$noHeader,
-    'no-pager'   => \$noPager,
-) or die();
+our $TTY;
+open($TTY, '>', '/dev/tty') or undef $TTY;
 
-my @gitCommand = ();
+main();
 
-while (scalar @ARGV) {
-    my $arg = shift(@ARGV);
-    last if ($arg eq '---');
-    push(@gitCommand, $arg);
-}
-if (!scalar @gitCommand) {
-    $list = 1;
-}
+sub main {
+    use Getopt::Long;
+    Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
+    Getopt::Long::GetOptions(
+        'G|no-git' => \$noGit,
+        'l|list'   => \$list,
+        'v|verbose+' => \$verbose,
+        'i|inline'   => \$inline,
+        'p|progress' => \$progress,
+        'no-header'  => \$noHeader,
+        'no-pager'   => \$noPager,
+    ) or die();
 
-my @findArguments = @ARGV;
-if (!scalar @findArguments) {
-    @findArguments = ('.');
-}
+    while (scalar @ARGV) {
+        my $arg = shift(@ARGV);
+        last if ($arg eq '---');
+        push(@gitCommand, $arg);
+    }
+    if (!scalar @gitCommand) {
+        $list = 1;
+    }
 
-if (!-t 1) {
-    $GREEN = '';
-    $RESET = '';
-}
+    my @findArguments = @ARGV;
+    if (!scalar @findArguments) {
+        @findArguments = ('.');
+    }
 
-gitFind();
+    if (!-t 1) {
+        $GREEN = '';
+        $RESET = '';
+    }
 
-sub gitFind {
     find(\&wanted, @findArguments);
 }
 
@@ -68,7 +71,6 @@ sub wanted {
     return if !scalar(@lstat);
     return unless -d _;
     return $File::Find::prune = 1 if $_ eq 'node_modules';
-    # print STDERR ("$File::Find::name\e[K\r");
     if (-d "$_/.git") {
         if ($list) {
             print($File::Find::name, "\n");
@@ -94,7 +96,12 @@ sub doTheThing {
 
 sub doTheNormalThing {
     my ($dir, $name) = @_;
-    printf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
+    my $msg = "==> ${name} <==";
+    if (-t 1) {
+        print(colored('green', $msg), "\n");
+    } else {
+        print($msg, "\n");
+    }
     my $pid = fork();
     die("$!") if !defined $pid;
     if (!$pid) {                # child
@@ -111,7 +118,7 @@ sub doTheNormalThing {
 sub doTheFancyThing {
     my ($dir, $name) = @_;
 
-    my $header = sprintf("%s==> %s <==%s\n", $GREEN, $name, $RESET);
+    my $header;
 
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
@@ -121,7 +128,6 @@ sub doTheFancyThing {
         ($noGit ? () : ('git', '--no-pager')),
         @gitCommand,
     );
-    warn("@cmd\n");
 
     my $pid = fork() // die("fork: $!");
     if (!$pid) {
