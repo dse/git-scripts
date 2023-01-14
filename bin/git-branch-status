@@ -31,7 +31,11 @@ check-branches () {
     export T_AHEAD
     export T_BEHIND
     git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read local remote ; do
-        check-branch "${local}" "${remote}"
+        if [[ ! -v remote ]] || [[ "${remote}" = "" ]] ; then
+            >&2 echo "${local}" has no upstream
+        else
+            check-branch "${local}" "${remote}"
+        fi
     done
 }
 
