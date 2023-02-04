@@ -25,6 +25,8 @@ our @gitCommand;
 our @exclude;
 our $exitCode = 0;
 our @failedNames;
+our $quiet;
+our $width;
 
 our $TTY;
 open($TTY, '>', '/dev/tty') or undef $TTY;
@@ -36,13 +38,15 @@ sub main {
     Getopt::Long::Configure('bundling', 'gnu_compat', 'no_ignore_case', 'no_permute');
     Getopt::Long::GetOptions(
         'x|exclude=s' => \@exclude,
-        'G|no-git' => \$noGit,
-        'l|list'   => \$list,
-        'v|verbose+' => \$verbose,
-        'i|inline'   => \$inline,
-        'p|progress' => \$progress,
-        'no-header'  => \$noHeader,
-        'no-pager'   => \$noPager,
+        'G|no-git'    => \$noGit,
+        'l|list'      => \$list,
+        'v|verbose+'  => \$verbose,
+        'i|inline'    => sub { $inline = 1; $quiet = 0; },
+        'p|progress'  => \$progress,
+        'q|quiet'     => sub { $quiet = 1; $inline = 0; },
+        'w|width=i'   => \$width,
+        'no-header'   => \$noHeader,
+        'no-pager'    => \$noPager,
     ) or die();
 
     while (scalar @ARGV) {
@@ -99,8 +103,7 @@ sub doTheThing {
 
 sub doTheNormalThing {
     my ($dir, $name) = @_;
-    my $msg = "==> ${name} <==";
-    print(msg($name), "\n");
+    print(msg("==> $name <=="), "\n");
     my $pid = fork();
     die("$!") if !defined $pid;
     if (!$pid) {                # child
@@ -119,7 +122,17 @@ use constant LINEBUF => 1;
 
 sub doTheFancyThing {
     my ($dir, $name) = @_;
-    my $msg = msg($name);
+    my $inlinePrefixStdout = $inline ? msg("[$name]", -t 1) . " " : '';
+    my $inlinePrefixStderr = $inline ? msg("[$name]", -t 2) . " " : '';
+    if ($width && $inline) {
+        my $pad = $width - length($name) - 2;
+        $pad = $pad > 0 ? ' ' x $pad : '';
+        $inlinePrefixStdout .= $pad;
+        $inlinePrefixStderr .= $pad;
+    }
+    if (!$quiet && !$inline) {
+        print(msg("==> $name <=="), "\n");
+    }
     my ($stdoutRead, $stdoutWrite, $stderrRead, $stderrWrite);
     pipe($stdoutRead, $stdoutWrite) or die("pipe: $!");
     pipe($stderrRead, $stderrWrite) or die("pipe: $!");
@@ -157,6 +170,8 @@ sub doTheFancyThing {
     my $hasStderr;
     my $buf1 = new My::LineBuf;
     my $buf2 = new My::LineBuf;
+    $buf1->{prefix} = $inlinePrefixStdout if $inline;
+    $buf2->{prefix} = $inlinePrefixStderr if $inline;
 
     my $printed = 0;
     do {
@@ -184,9 +199,8 @@ sub doTheFancyThing {
                 $select->remove($stdoutRead);
                 last;
             }
-            print("$msg\n") if !$printed++;
-            $buf1->append($data);
-            print STDOUT $buf1->read($data);
+            print(msg("==> $name <<="), "\n") if $quiet && !$printed++;
+            print STDOUT $buf1->feed($data);
         }
         while ($hasStderr) {
             my $data;
@@ -208,9 +222,8 @@ sub doTheFancyThing {
                 $select->remove($stderrRead);
                 last;
             }
-            print("$msg\n") if !$printed++;
-            $buf2->append($data);
-            print STDERR $buf2->read($data);
+            print(msg("==> $name <<="), "\n") if $quiet && !$printed++;
+            print STDERR $buf2->feed($data);
         }
     } while ($hasStdout || $hasStderr);
     print STDOUT $buf1->finish();
@@ -219,9 +232,9 @@ sub doTheFancyThing {
 }
 
 sub msg {
-    my ($name) = @_;
-    my $msg = "==> $name <==";
-    return colored(['green'], $msg) if -t 1;
+    my ($msg, $tty) = @_;
+    $tty //= -t 1;
+    return colored(['green'], $msg);
     return $msg;
 }
 
@@ -241,13 +254,13 @@ sub exit_status {
 }
 
 package My::LineBuf {
-    sub new { return bless({ data => '' }, shift); }
-    sub append {
+    sub new {
+        my ($class, %args) = @_;
+        return bless({ %args, data => '' }, $class);
+    }
+    sub feed {
         my ($self, $data) = @_;
         $self->{data} .= $data;
-    }
-    sub read {
-        my ($self) = @_;
         my $index = rindex($self->{data}, "\n");
         if ($index == -1) {
             return '';
@@ -255,11 +268,11 @@ package My::LineBuf {
         if ($index == length($self->{data}) - 1) {
             my $data = $self->{data};
             $self->{data} = '';
-            return $data;
+            return $self->string($data);
         }
-        my $data = substr($self->{data}, 0, $index + 1);
+        $data = substr($self->{data}, 0, $index + 1);
         $self->{data} = substr($self->{data}, $index + 1);
-        return $data;
+        return $self->string($data);
     }
     sub finish {
         my ($self) = @_;
@@ -267,6 +280,12 @@ package My::LineBuf {
         $self->{data} = '';
         return '' if !length $data;
         $data .= "\n" if substr($data, -1) ne "\n";
+        return $self->string($data);
+    }
+    sub string {
+        my ($self, $data) = @_;
+        my $prefix = $self->{prefix};
+        $data =~ s{^}{$prefix}gm if defined $prefix && $prefix ne '';
         return $data;
     }
 }

@@ -12,7 +12,7 @@ shopt -s lastpipe
 PROGNAME="$(basename "$0")"
 
 main () {
-    local format=format-v1
+    local verbose=0
     get-options "$@"
     shift $((OPTIND - 1))
     check-branches
@@ -30,6 +30,7 @@ check-branches () {
     export T_RESET
     export T_AHEAD
     export T_BEHIND
+    export BSVERBOSE="${verbose}"
     git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read local remote ; do
         if [[ ! -v remote ]] || [[ "${remote}" = "" ]] ; then
             >&2 echo "${local}" has no upstream
@@ -46,65 +47,53 @@ check-branch () {
     if [[ -z "${remote}" ]] ; then
         return
     fi
-    ( echo "${local}" && echo "${remote}" && git rev-list --left-right "${local}...${remote}" -- ) | "${format}"
+    ( echo "${local}" && echo "${remote}" && git rev-list --left-right "${local}...${remote}" -- ) | format
 }
 
-format-v1 () {
+format () {
     awk '
-        BEGIN { ahead = 0; behind = 0; ORS = ""; OFS = ""; }
-        NR == 1 { local = $0; next; }
-        NR == 2 { remote = $0; next; }
-        /^</ { ahead += 1; }
-        /^>/ { behind += 1; }
-        END {
-            printf("%-32s %s(ahead %4d)%s | %s(behind %4d)%s %s\n",
-                   local,
-                   ahead ? ENVIRON["T_AHEAD"] : "",
-                   ahead,
-                   ahead ? ENVIRON["T_RESET"] : "",
-                   behind ? ENVIRON["T_BEHIND"] : "",
-                   behind,
-                   behind ? ENVIRON["T_RESET"] : "",
-                   remote);
+        BEGIN {
+            ahead = 0;
+            behind = 0;
+            ORS = "";
+            OFS = "";
+            verbose = 0 + ENVIRON["BSVERBOSE"];
+            T_AHEAD  = ENVIRON["T_AHEAD"];
+            T_BEHIND = ENVIRON["T_BEHIND"];
+            T_RESET  = ENVIRON["T_RESET"];
         }
-    '
-}
-
-format-v2 () {
-    awk '
-        BEGIN { ahead = 0; behind = 0; ORS = ""; OFS = ""; }
         NR == 1 { local = $0; next; }
         NR == 2 { remote = $0; next; }
         /^</ { ahead += 1; }
         /^>/ { behind += 1; }
         END {
-            printf("%s...%s", local, remote);
-            if (ahead) {
-                printf(" %s[ahead %d]%s", ENVIRON["T_AHEAD"], ahead, ENVIRON["T_RESET"]);
+            if (ahead || behind || verbose) {
+                printf("%s...%s", local, remote);
+                if (ahead || verbose) {
+                    print(" ", T_AHEAD);
+                    printf("ahead %d", ahead);
+                    print(T_RESET);
+                }
+                if (behind || verbose) {
+                    print(" ", T_BEHIND);
+                    printf("behind %d", behind);
+                    print(T_RESET);
+                }
+                printf("\n");
             }
-            if (behind) {
-                printf(" %s[behind %d]%s", ENVIRON["T_BEHIND"], behind, ENVIRON["T_RESET"]);
-            }
-            print("\n");
         }
     '
 }
 
 get-options () {
-    while getopts '12hv:' OPTION ; do
+    while getopts 'hv' OPTION ; do
         case "${OPTION}" in
             'h')
                 usage
                 exit 0
                 ;;
-            '1')
-                format=format-v1
-                ;;
-            '2')
-                format=format-v2
-                ;;
             'v')
-                format=format-v"${OPTARG}"
+                verbose=$((verbose + 1))
                 ;;
             '?')
                 # short option invalid or missing argument
@@ -119,8 +108,7 @@ usage () { cat <<EOF; }
 usage:
     ${PROGNAME} [<option> ...] [--] [<filename> ...]
 options:
-    -1, -v1  output format version 1
-    -2, -v2  output format version 2
+    -v       verbosity
     -h       help
 EOF
 
