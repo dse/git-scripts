@@ -13,8 +13,12 @@ PROGNAME="$(basename "$0")"
 
 main () {
     local verbose=0
+    local ahead=1
+    local behind=1
     get-options "$@"
     shift $((OPTIND - 1))
+    export GIT_BRANCH_AHEAD="${ahead}"
+    export GIT_BRANCH_BEHIND="${behind}"
     check-branches
 }
 
@@ -61,23 +65,29 @@ format () {
             T_AHEAD  = ENVIRON["T_AHEAD"];
             T_BEHIND = ENVIRON["T_BEHIND"];
             T_RESET  = ENVIRON["T_RESET"];
+            AHEAD = 0 + ENVIRON["GIT_BRANCH_AHEAD"]
+            BEHIND = 0 + ENVIRON["GIT_BRANCH_BEHIND"]
         }
         NR == 1 { local = $0; next; }
         NR == 2 { remote = $0; next; }
         /^</ { ahead += 1; }
         /^>/ { behind += 1; }
         END {
-            if (ahead || behind || verbose) {
+            if ((ahead && AHEAD) || (behind && BEHIND) || verbose) {
                 printf("%s...%s", local, remote);
-                if (ahead || verbose) {
-                    print(" ", T_AHEAD);
-                    printf("ahead %d", ahead);
-                    print(T_RESET);
+                if (AHEAD) {
+                    if (ahead || verbose) {
+                        print(" ", T_AHEAD);
+                        printf("ahead %d", ahead);
+                        print(T_RESET);
+                    }
                 }
-                if (behind || verbose) {
-                    print(" ", T_BEHIND);
-                    printf("behind %d", behind);
-                    print(T_RESET);
+                if (BEHIND) {
+                    if (behind || verbose) {
+                        print(" ", T_BEHIND);
+                        printf("behind %d", behind);
+                        print(T_RESET);
+                    }
                 }
                 printf("\n");
             }
@@ -86,8 +96,16 @@ format () {
 }
 
 get-options () {
-    while getopts 'hv' OPTION ; do
+    while getopts 'hvab' OPTION ; do
         case "${OPTION}" in
+            'a')
+                ahead=1
+                behind=0
+                ;;
+            'b')
+                ahead=0
+                behind=1
+                ;;
             'h')
                 usage
                 exit 0
