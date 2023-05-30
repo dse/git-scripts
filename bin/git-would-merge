@@ -7,7 +7,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
-#set -o xtrace
+# set -o xtrace
 
 # .NAME
 #     git-would-merge
@@ -109,7 +109,7 @@ main () {
     local mergeHead="$(cat "${root}/.git/MERGE_HEAD")"
     local mergeBase="$(git merge-base "${origHead}" "${mergeHead}")"
 
-    # make sure the files we created are ignored by git
+    # make sure the files we created are ignored by git, and each entry is only present once
     local excludeFile="${root}/.git/info/exclude"
     grep -F -x '*--BASE*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--BASE*'   >>"${excludeFile}"
     grep -F -x '*--OURS*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${excludeFile}"
@@ -184,21 +184,45 @@ would-merge () {
 
         local -a files
 
-        git show ":1:${gitfilename}" >"${base}"
-        git show ":2:${gitfilename}" >"${ours}"
-        git show ":3:${gitfilename}" >"${theirs}"
+        # gitrevisions(7)
+        #     :1: common ancestor                           MERGE_BASE
+        #     :2: target branch (usually current branch)    ORIG_HEAD
+        #     :3: version from branch being merged          MERGE_HEAD
 
+        has_merge_base=1
+        if git show ":1:./${gitfilename}" >"${base}" ; then
+            :
+        else
+            merge_base="$(git merge-base ORIG_HEAD MERGE_HEAD)"
+            if git show "${merge_base}:./${gitfilename}" >"${base}" ; then
+                :
+            else
+                has_merge_base=0
+                >&2 echo "*** NOTICE *** ${gitfilename} is not in merge base ***"
+            fi
+        fi
+        git show ":2:./${gitfilename}" >"${ours}"
+        git show ":3:./${gitfilename}" >"${theirs}"
+
+        if (( has_merge_base )) ; then
+            files+=(
+                "${base}"
+            )
+        fi
         files+=(
-            "${base}"
             "${ours}"
             "${theirs}"
         )
 
-        git show "${mergeBase}:${gitfilename}" >"${base2}"
-        git show "${origHead}:${gitfilename}"  >"${ours2}"
-        git show "${mergeHead}:${gitfilename}" >"${theirs2}"
+        if (( has_merge_base )) ; then
+            git show "${mergeBase}:./${gitfilename}" >"${base2}"
+        fi
+        git show "${origHead}:./${gitfilename}"  >"${ours2}"
+        git show "${mergeHead}:./${gitfilename}" >"${theirs2}"
 
-        if diff "${base}"   "${base2}"   ; then rm "${base2}"   ; else >&2 echo "WARNING: :1: and merge base ${mergeBase} differ" ; files+=("${base2}")   ; fi
+        if (( has_merge_base )) ; then
+            if diff "${base}"   "${base2}"   ; then rm "${base2}"   ; else >&2 echo "WARNING: :1: and merge base ${mergeBase} differ" ; files+=("${base2}")   ; fi
+        fi
         if diff "${ours}"   "${ours2}"   ; then rm "${ours2}"   ; else >&2 echo "WARNING: :2: and ours ${ours} differ"            ; files+=("${ours2}")   ; fi
         if diff "${theirs}" "${theirs2}" ; then rm "${theirs2}" ; else >&2 echo "WARNING: :2: and ours ${theirs} differ"          ; files+=("${theirs2}") ; fi
 
@@ -207,26 +231,28 @@ would-merge () {
             git diff --no-index --ignore-cr-at-eol --ignore-blank-lines -b -w --color=never "${diff_options[@]}"
         )
 
-        "${diff[@]}"                "${base}" "${ours}"               >"${fromBaseToOurs}.diff" || true
-        "${diff[@]}"                "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.diff" || true
-        "${diff[@]}"                "${base}" "${theirs}"             >"${fromBaseToTheirs}.diff" || true
-        "${diff[@]}"                "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.diff" || true
+        if (( has_merge_base )) ; then
+            "${diff[@]}"                "${base}" "${ours}"               >"${fromBaseToOurs}.diff" || true
+            "${diff[@]}"                "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.diff" || true
+            "${diff[@]}"                "${base}" "${theirs}"             >"${fromBaseToTheirs}.diff" || true
+            "${diff[@]}"                "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.diff" || true
 
-        "${diff[@]}" --color=always "${base}" "${ours}"               >"${fromBaseToOurs}.c.diff" || true
-        "${diff[@]}" --color=always "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.c.diff" || true
-        "${diff[@]}" --color=always "${base}" "${theirs}"             >"${fromBaseToTheirs}.c.diff" || true
-        "${diff[@]}" --color=always "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.c.diff" || true
+            "${diff[@]}" --color=always "${base}" "${ours}"               >"${fromBaseToOurs}.c.diff" || true
+            "${diff[@]}" --color=always "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.c.diff" || true
+            "${diff[@]}" --color=always "${base}" "${theirs}"             >"${fromBaseToTheirs}.c.diff" || true
+            "${diff[@]}" --color=always "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.c.diff" || true
 
-        files+=(
-            "${fromBaseToOurs}.diff"
-            "${fromBaseToOurs}.w.diff"
-            "${fromBaseToTheirs}.diff"
-            "${fromBaseToTheirs}.w.diff"
-            "${fromBaseToOurs}.c.diff"
-            "${fromBaseToOurs}.w.c.diff"
-            "${fromBaseToTheirs}.c.diff"
-            "${fromBaseToTheirs}.w.c.diff"
-        )
+            files+=(
+                "${fromBaseToOurs}.diff"
+                "${fromBaseToOurs}.w.diff"
+                "${fromBaseToTheirs}.diff"
+                "${fromBaseToTheirs}.w.diff"
+                "${fromBaseToOurs}.c.diff"
+                "${fromBaseToOurs}.w.c.diff"
+                "${fromBaseToTheirs}.c.diff"
+                "${fromBaseToTheirs}.w.c.diff"
+            )
+        fi
 
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${mergeHead}..${origHead}" -- "${gitfilename}" >"${ours}.log"
         git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${origHead}..${mergeHead}" -- "${gitfilename}" >"${theirs}.log"
@@ -244,8 +270,14 @@ would-merge () {
 
         local noConflicts=1
 
+        declare -a files_check_conflict_markers=()
+        if (( has_merge_base )) ; then
+            files+=("${base}")
+        fi
+        files_check_conflict_markers+=("${ours}" "${theirs}")
+
         local i
-        for i in "${ours}" "${theirs}" "${base}" ; do
+        for i in "${files_check_conflict_markers[@]}" ; do
             if grep -e '^<<<<<<< ' -e '^======= ' -e '^>>>>>>> ' -e '^<<<<<<<<< ' -e '^========= ' -e '^>>>>>>>>> ' "${ours}" >/dev/null 2>/dev/null ; then
                 noConflicts=0
                 echo "    :-( ${i} itself appears to contain merge conflicts."
@@ -270,9 +302,10 @@ clean () {
 }
 
 at_exit () {
-    [[ -n "${ours}"   ]] && [[ -e "${ours}.tmp"   ]] && { rm "${ours}.tmp"   >/dev/null 2>/dev/null || true; }
-    [[ -n "${theirs}" ]] && [[ -e "${theirs}.tmp" ]] && { rm "${theirs}.tmp" >/dev/null 2>/dev/null || true; }
-    [[ -n "${base}"   ]] && [[ -e "${base}.tmp"   ]] && { rm "${base}.tmp"   >/dev/null 2>/dev/null || true; }
+    for varname in ours theirs base ; do
+        [[ -v "${varname}" ]] && [[ -n "${!varname}" ]] && [[ -e "${!varname}.tmp" ]] &&
+            { rm "${!varname}.tmp" >/dev/null 2>/dev/null || true; }
+    done
 }
 
 ###############################################################################
