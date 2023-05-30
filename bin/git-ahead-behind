@@ -2,6 +2,22 @@
 use warnings;
 use strict;
 use List::Util qw(max);
+use Getopt::Long;
+use File::Basename qw(basename);
+our $PROGNAME = basename($0);
+
+our $quiet = 0;
+
+Getopt::Long::Configure(qw(gnu_getopt no_ignore_case));
+Getopt::Long::GetOptions(
+    'h|help' => sub { usage(); exit(0); },
+    'q|quiet+' => \$quiet,
+) or die("Type '${PROGNAME} --help' for help.\n");
+sub usage { print(<<"END"); }
+usage: ${PROGNAME} [--quiet [--quiet]] <remote|-> <remote|->
+--quiet silences branches neither ahead nor behind
+--quiet twice silences branches not in one of the remotes
+END
 
 my $branches = getBranches();
 my $all_branch_names = $branches->{all_branch_names};
@@ -17,19 +33,11 @@ if (scalar @ARGV < 2) {
 }
 
 my ($location_a, $location_b) = @ARGV;            # we only specify two remotes
-$location_a = '' if $location_a eq '-';
-$location_b = '' if $location_a eq '-';
+$location_a = '(local)' if $location_a eq '-';
+$location_b = '(local)' if $location_a eq '-';
 
-my @column_widths = (
-    max(map { length($_) } @$all_branch_names),
-    max(4, length($location_a)),
-    max(4, length($location_b)),
-);
-my ($A, $B, $C) = @column_widths;
-my $fmt = "%-${A}s  %-${B}s  %-${C}s\n";
-
-printf($fmt, 'branch', $location_a, $location_b);
-printf($fmt, ('-' x $A), ('-' x $B), ('-' x $C));
+my $fmt = "%-46s  %-6s  %-6s\n";
+my $err_fmt = "%-46s  %s\n";
 
 foreach my $branch (@$all_branch_names) {
     my $go = 1;
@@ -37,21 +45,25 @@ foreach my $branch (@$all_branch_names) {
     my $in_b = $branch_has_remote->{$branch}{$location_b};
     if (!$in_a && !$in_b) {
         $go = 0;
-        printf("%-${A}s  is in neither location\n", $branch);
+        printf($err_fmt, $branch, 'is in neither location');
         next;
     }
     if (!$in_a) {
         $go = 0;
-        printf("%-${A}s  is not in %s\n", $branch, $location_a);
+        if ($quiet < 2) {
+            printf($err_fmt, $branch, sprintf('not in %s', $location_a));
+        }
     }
     if (!$in_b) {
         $go = 0;
-        printf("%-%{A}s  is not in %s\n", $branch, $location_b);
+        if ($quiet < 2) {
+            printf($err_fmt, $branch, sprintf('not in %s', $location_b));
+        }
     }
     next if !$go;
     my $ph;
-    my $rev_a = $location_a eq '' ? "$branch" : "$location_a/$branch";
-    my $rev_b = $location_b eq '' ? "$branch" : "$location_b/$branch";
+    my $rev_a = $location_a eq '(local)' ? "$branch" : "$location_a/$branch";
+    my $rev_b = $location_b eq '(local)' ? "$branch" : "$location_b/$branch";
     my @cmd = ('git', 'rev-list', '--left-right', "${rev_a}...${rev_b}", "--count");
     open($ph, '-|', @cmd) or do {
         warn("git rev-list: $!\n");
@@ -60,6 +72,11 @@ foreach my $branch (@$all_branch_names) {
     while (<$ph>) {
         s{\R\z}{};
         my ($a, $b) = split();
+        if ($quiet) {
+            if (!$a && !$b) {
+                next;
+            }
+        }
         printf($fmt, $branch, $a, $b);
     }
 }
@@ -91,7 +108,7 @@ sub getBranches {
             $remote = $+{remote};
         } else {
             $branch = $ref;
-            $remote = '';       # indicates "local"
+            $remote = '(local)'; # indicates "local"
         }
         push(@branches, $branch);
         push(@remotes, $remote);
