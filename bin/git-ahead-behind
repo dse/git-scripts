@@ -1,12 +1,122 @@
-#!/usr/bin/env bash
-set -o errexit
-set -o pipefail
-set -o nounset
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use List::Util qw(max);
 
-# h/t https://stackoverflow.com/questions/20433867/git-ahead-behind-info-between-master-and-branch
+my $branches = getBranches();
+my $all_branch_names = $branches->{all_branch_names};
+my $all_remote_names = $branches->{all_remote_names};
+my $branch_has_remote = $branches->{branch_has_remote};
+my $remote_has_branch = $branches->{remote_has_branch};
+my $branch_remotes = $branches->{branch_has_remotes};
+my $remote_branches = $branches->{remote_has_branches};
 
-if (( ! $# )) ; then
-    git status --short --branch
-else
-    git status --short --branch "$@"
-fi
+if (scalar @ARGV < 2) {
+    warn("git-ahead-behind <remote|-> <remote|->\n");
+    exit(1);
+}
+
+my ($location_a, $location_b) = @ARGV;            # we only specify two remotes
+$location_a = '' if $location_a eq '-';
+$location_b = '' if $location_a eq '-';
+
+my @column_widths = (
+    max(map { length($_) } @$all_branch_names),
+    max(4, length($location_a)),
+    max(4, length($location_b)),
+);
+my ($A, $B, $C) = @column_widths;
+my $fmt = "%-${A}s  %-${B}s  %-${C}s\n";
+
+printf($fmt, 'branch', $location_a, $location_b);
+printf($fmt, ('-' x $A), ('-' x $B), ('-' x $C));
+
+foreach my $branch (@$all_branch_names) {
+    my $go = 1;
+    my $in_a = $branch_has_remote->{$branch}{$location_a};
+    my $in_b = $branch_has_remote->{$branch}{$location_b};
+    if (!$in_a && !$in_b) {
+        $go = 0;
+        printf("%-${A}s  is in neither location\n", $branch);
+        next;
+    }
+    if (!$in_a) {
+        $go = 0;
+        printf("%-${A}s  is not in %s\n", $branch, $location_a);
+    }
+    if (!$in_b) {
+        $go = 0;
+        printf("%-%{A}s  is not in %s\n", $branch, $location_b);
+    }
+    next if !$go;
+    my $ph;
+    my $rev_a = $location_a eq '' ? "$branch" : "$location_a/$branch";
+    my $rev_b = $location_b eq '' ? "$branch" : "$location_b/$branch";
+    my @cmd = ('git', 'rev-list', '--left-right', "${rev_a}...${rev_b}", "--count");
+    open($ph, '-|', @cmd) or do {
+        warn("git rev-list: $!\n");
+        next;
+    };
+    while (<$ph>) {
+        s{\R\z}{};
+        my ($a, $b) = split();
+        printf($fmt, $branch, $a, $b);
+    }
+}
+
+sub getBranches {
+    my $ph;
+    open($ph, '-|', 'git', 'branch', '-a') or do {
+        warn("git branch: $!\n");
+        return;
+    };
+    my @refs;
+    while (<$ph>) {
+        s{\R\z}{};
+        $_ = substr($_, 2);
+        next if m{/HEAD -> };
+        push(@refs, $_);
+    }
+    my @branches;
+    my @remotes;
+    my %branch_has_remote;
+    my %remote_has_branch;
+    my %branch_remotes;
+    my %remote_branches;
+    foreach my $ref (@refs) {
+        my $branch;
+        my $remote;
+        if ($ref =~ m{^remotes/(?<remote>[^/]+)/(?<branch>.*)$}) {
+            $branch = $+{branch};
+            $remote = $+{remote};
+        } else {
+            $branch = $ref;
+            $remote = '';       # indicates "local"
+        }
+        push(@branches, $branch);
+        push(@remotes, $remote);
+        $branch_has_remote{$branch}{$remote} = 1;
+        $remote_has_branch{$remote}{$branch} = 1;
+        push(@{$branch_remotes{$branch}}, $remote);
+        push(@{$remote_branches{$remote}}, $branches);
+    }
+    @branches = distinct(@branches);
+    @remotes  = distinct(@remotes);
+    return {
+        all_branch_names => \@branches,
+        all_remote_names => \@remotes,
+        branch_has_remote => \%branch_has_remote,
+        remote_has_branch => \%remote_has_branch,
+        branch_remotes => \%branch_remotes,
+        remote_branches => \%remote_branches,
+    };
+}
+
+sub distinct {
+    my @result;
+    my %occur;
+    foreach my $str (@_) {
+        push(@result, $str) if !$occur{$str}++;
+    }
+    return @result;
+}
