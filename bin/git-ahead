@@ -18,7 +18,7 @@ for branch_ref in "${branch_refs[@]}" ; do
         remote="${remote%/${branch}}"
         git rev-list --left-right --count "${branch_ref}...${remote_ref}" | read ahead behind
         if (( ahead || behind )) ; then
-            printf "ahead %4d      behind %4d     %-30s  %s\\n" "${ahead}" "${behind}" "${branch}" "${remote}"
+            printf "%-30s  %4d ahead  %4d behind  %s\\n" "${branch}" "${ahead}" "${behind}" "${remote}"
         fi
     done
 done
