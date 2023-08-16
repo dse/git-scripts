@@ -1,128 +1,24 @@
 #!/usr/bin/env bash
-set -o errexit
-set -o pipefail
-set -o nounset
+set -o errexit                  # exit if any pipeline fails
+set -o nounset                  # set your variables first
+set -o pipefail                 # if one component fails the pipeline fails
+shopt -s lastpipe               # last component is exec'd in foreground
 # set -o xtrace
-shopt -s lastpipe
 
-PROGNAME="$(basename "$0")"
+declare -a branch_refs
+declare -a remote_refs
 
-# h/t https://stackoverflow.com/questions/20433867/git-ahead-behind-info-between-master-and-branch
+git for-each-ref --format='%(refname)' 'refs/heads/*' | readarray -t branch_refs
 
-temp="$(mktemp)"
-temp2="$(mktemp)"
-
-main () {
-    local quiet=0
-    local optQuiet=''
-    local allBranches=0
-    local xtrace=0
-    local TAB=$'\t'
-
-    local OPTARG OPTIND=1 OPTERR=1 OPTION
-    while getopts 'qhBx-:' OPTION ; do
-        case "${OPTION}" in
-            'q') optQuiet=--quiet; quiet=1;;
-            'B') allBranches=1;;
-            'h') usage; exit 0;;
-            'x') xtrace=1;;
-            '-')
-                case "${OPTARG}" in
-                    '')
-                        # '--' by itself terminates option parsing
-                        break;;
-                    quiet)
-                        optQuiet=--quiet; quiet=1;;
-                    all-branches)
-                        allBranches=1;;
-                    help)
-                        usage; exit 0;;
-                    xtrace)
-                        xtrace=1;;
-                    *)
-                        >&2 echo "${PROGNAME}: unknown option: --${OPTARG}"
-                        exit 1;;
-                esac;;
-            '?') exit 1;;           # or return 1 inside a function
-        esac
-    done
-    shift $((OPTIND - 1))
-
-    local -a args=("$@")
-
-    local ab
-    case "${PROGNAME}" in
-        git-ahead)
-            ab=--left-only
-            ;;
-        git-behind)
-            ab=--right-only
-            ;;
-    esac
-
-    if (( xtrace )) ; then
-        # need stderr in case we redirect 2>/dev/null on something
-        exec 3>&2
-    fi
-
-    local -a branches=()
-    local -a revListArguments=()
-    local i
-    local numRevisions
-    if (( allBranches )) ; then
-        git --no-pager branch --list --no-color --no-column | cut -c3- | mapfile -t branches
-        for i in "${branches[@]}" ; do
-            if (( quiet )) ; then
-                if ! run git rev-list "${ab}" --count "${i}...remotes/origin/${i}" 2>/dev/null | sed -n '/^0$/d;s/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
-                    true
-                fi
-            else
-                if ! run git rev-list "${ab}" --count "${i}...remotes/origin/${i}" | sed -n 's/$/'"${TAB}${i//\//\\\/}"'/;p' ; then
-                    echo ":-(${TAB}${i}"
-                fi
-            fi
-        done
-    else
-        if (( ! $# )) ; then
-            args=(master...remotes/origin/master)
+for branch_ref in "${branch_refs[@]}" ; do
+    branch="${branch_ref#refs/heads/}"
+    git for-each-ref --format='%(refname)' "refs/remotes/*/${branch}" | readarray -t remote_refs
+    for remote_ref in "${remote_refs[@]}" ; do
+        remote="${remote_ref#refs/remotes/}"
+        remote="${remote%/${branch}}"
+        git rev-list --left-right --count "${branch_ref}...${remote_ref}" | read ahead behind
+        if (( ahead || behind )) ; then
+            printf "ahead %4d      behind %4d     %-30s  %s\\n" "${ahead}" "${behind}" "${branch}" "${remote}"
         fi
-        for i in "${args[@]}" ; do
-            case "${i}" in
-                *...*)
-                    :
-                    ;;
-                *)
-                    i="${i}...remotes/origin/${i}"
-                    ;;
-            esac
-            if (( quiet )) ; then
-                if ! run git rev-list "${ab}" --count "${i}" 2>/dev/null | sed -n '/^0$/d;p' ; then
-                    true
-                fi
-            else
-                if ! run git rev-list "${ab}" --count "${i}" ; then
-                    echo ":-(${TAB}${i}"
-                fi
-            fi
-        done
-    fi
-}
-
-usage () { cat <<EOF; }
-usage:
-    ${PROGNAME} [-q] [<branch>...<branch>]
-options:
-    -q, --quiet         don't output if zero revisions ahead
-    -B, --all-branches
-    -h, --help
-    -x, --xtrace
-
-EOF
-
-run () {
-    (( xtrace )) && >&3 echo '+' "$@"
-    "$@"
-}
-
-###############################################################################
-main "$@"
+    done
+done
