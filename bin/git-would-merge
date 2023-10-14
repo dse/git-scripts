@@ -1,312 +1,202 @@
 #!/usr/bin/env bash
-#
-# git-would-merge --- utility to output contents of the base branch,
-# our branch, and their branch, in preparation for a merge.
-#
 set -o errexit
 set -o nounset
 set -o pipefail
-shopt -s lastpipe               # for ... | {readarray|mapfile} -t <arrayname>
-# set -o xtrace
+shopt -s lastpipe       # for ... | {readarray|mapfile} -t <arrayname>
 
-# .NAME
-#     git-would-merge
-# .DESCRIPTION
-#     Quick and dirty utility for when there are merge conflicts.
-#
-#     Run this program in a git repository.
-#
-#     Where there are merge conflicts, it produces the following
-#     files:
-#
-#     -   versions of the files in question at the merge base, in our
-#         branch, and in the source branch (THEIRS):
-#
-#         -   <filename>.GWM.BASE.<ext>
-#         -   <filename>.GWM.OURS.<ext>
-#         -   <filename>.GWM.THEIRS.<ext>
-#
-#     -   diffs between the merge base and the target branch, and
-#         between the merge base and the source branch:
-#
-#         -   <filename>.GWM.BASE--OURS.<ext>.diff
-#         -   <filename>.GWM.BASE--THEIRS.<ext>.diff
-#
-#     -   and a `git log` list of commits from the merge base to either
-#         the target branch (OURS) or source branch (THEIRS):
-#
-#         -   <filename>.GWM.BASE--OURS.<ext>.log
-#         -   <filename>.GWM.BASE--THEIRS.<ext>.log
-#
-#     A good rule of thumb is the following:
-#
-#     -   Take the **larger** of the two .diff files, and copy its
-#         respective version (<filename>.GWM.OURS.<ext> or
-#         <filename>.GWM.THEIRS.<ext>) to the file name in conflict.
-#
-#     -   Take the **smaller** of the two .diff files, and apply it
-#         as a patch, either manually or using `patch`.
-#
-# .EXAMPLE 1
-#
-# Let's say after running `git-would-merge` you have the following
-# files now:
-#
-#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:41 awsLambda.js
-#     -rw-r--r-- 1 dse dse 2952 Oct  4 12:44 awsLambda.GWM.BASE.js
-#     -rw-r--r-- 1 dse dse 1227 Oct  4 12:44 awsLambda.GWM.BASE--OURS.js.diff
-#     -rw-r--r-- 1 dse dse 1997 Oct  4 12:44 awsLambda.GWM.BASE--THEIRS.js.diff
-#     -rw-r--r-- 1 dse dse 3191 Oct  4 12:44 awsLambda.GWM.OURS.js
-#     -rw-r--r-- 1 dse dse 2222 Oct  4 12:44 awsLambda.GWM.OURS.js.log
-#     -rw-r--r-- 1 dse dse 2459 Oct  4 12:44 awsLambda.GWM.THEIRS.js
-#     -rw-r--r-- 1 dse dse 3273 Oct  4 12:44 awsLambda.GWM.THEIRS.js.log
-#
-# Because the smaller of the two diffs is between BASE and OURS,
-# you probably want to take the following steps:
-#
-# -   `cp awsLambda.GWM.THEIRS.js awsLambda.js`
-#
-# -   `patch -p1 awsLambda.GWM.BASE--OURS.js.diff`
-#     or do the same manually
+# usage:
+#     git would-merge
+# to force overwrite files:
+#     git would-merge -f
+# dry run:
+#     git would-merge -n
+# check files to clean:
+#     git would-merge -c -n
+# clean:
+#     git would-merge -c -f
+
+# create temporary files and clean them up on script exit
+temp_base="$(mktemp)"
+temp_ours="$(mktemp)"
+temp_theirs="$(mktemp)"
+at_exit () {
+    if [[ -e "${temp_base}" ]] ; then rm "${temp_base}" || true ; fi
+    if [[ -e "${temp_ours}" ]] ; then rm "${temp_ours}" || true ; fi
+    if [[ -e "${temp_theirs}" ]] ; then rm "${temp_theirs}" || true ; fi
+}
+trap at_exit EXIT
 
 main () {
-    # top level project directory
-    local root="$(git rev-parse --show-toplevel)"
+    # option default values
+    local force=0
+    local dry_run=0
+    local clean=0
+    local verbose=0
 
-    local -a diff_options=()
-
-    while (( $# )) && [[ "$1" = -* ]] ; do
-        diff_options+=("$1")
-        shift
+    # check for options
+    while getopts 'cfnv' OPTION ; do
+        case "${OPTION}" in
+            f) dry_run=0; force=1;;
+            n) force=0; dry_run=1;;
+            c) clean=1;;
+            v) verbose=$((verbose + 1));;
+            *) exit 1;;
+        esac
     done
+    shift $((OPTIND - 1))
 
-    if (( $# )) && [[ "$1" == "help" ]] ; then
-        echo "usage:"
-        echo "    git-would-merge help"
-        echo "    git-would-merge clean"
-        echo "    git-would-merge"
-    fi
+    local root="$(git rev-parse --show-toplevel)"
+    local rel_root="$(realpath --relative-to=. "${root}")"
 
-    if (( $# )) && [[ "$1" == "clean" ]] ; then
+    if (( clean )) ; then
         clean
         exit 0
     fi
 
-    if [[ ! -e "${root}/.git/ORIG_HEAD" ]] ; then
-        >&2 echo "not merging"
+    if [[ ! -e "${root}/.git/ORIG_HEAD" ]] || [[ ! -e "${root}/.git/MERGE_HEAD" ]] ; then
+        echo "It doesn't look like you're merging." >&2
         exit 1
     fi
 
-    local isMerging=0
-    [[ -e "${root}/.git/MERGE_HEAD" ]] && isMerging=1
-
-    if (( !isMerging )) ; then
-        >&2 echo "git-would-merge: not merging."
-        exit 1
-    fi
-
-    local origHead="$(cat "${root}/.git/ORIG_HEAD")"
-    local mergeHead="$(cat "${root}/.git/MERGE_HEAD")"
-    local mergeBase="$(git merge-base "${origHead}" "${mergeHead}")"
-
-    # make sure the files we created are ignored by git, and each entry is only present once
-    local excludeFile="${root}/.git/info/exclude"
-    grep -F -x '*--BASE*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--BASE*'   >>"${excludeFile}"
-    grep -F -x '*--OURS*'   "${excludeFile}" >/dev/null 2>/dev/null || echo '*--OURS*'   >>"${excludeFile}"
-    grep -F -x '*--THEIRS*' "${excludeFile}" >/dev/null 2>/dev/null || echo '*--THEIRS*' >>"${excludeFile}"
-    grep -F -x '*.tmp'      "${excludeFile}" >/dev/null 2>/dev/null || echo '*.tmp'      >>"${excludeFile}"
-    grep -F -x '*.GWM.*'    "${excludeFile}" >/dev/null 2>/dev/null || echo '*.GWM.*'    >>"${excludeFile}"
-
-    local filename=""
-    local -a filenames=()
+    orig_head="$(cat "${root}/.git/ORIG_HEAD")"
+    merge_head="$(cat "${root}/.git/MERGE_HEAD")"
+    merge_base="$(git merge-base "${orig_head}" "${merge_head}")"
     if (( $# )) ; then
-        for filename in "${@}" ; do
-            would-merge "${filename}"
+        # We have arguments; run only those files.  Also, we specify
+        # those files relative to pwd so we need to compute
+        # project-root-relative paths.
+        for filename in "$@" ; do
+            filename="$(realpath --relative-to="${root}" "${filename}")"
+            would_merge "${filename}"
         done
     else
+        # We have no arguments; run every file with conflicts.  And in
+        # this case they're provided relative to project root.
         git diff --name-only --diff-filter=U | mapfile -t filenames
         if (( ! ${#filenames[@]} )) ; then
-            >&2 echo "no files with conflicts."
+            echo "$0: no files with conflicts"
             exit 0
         fi
         for filename in "${filenames[@]}" ; do
-            would-merge "${filename}"
+            would_merge "${filename}"
         done
     fi
 }
 
-would-merge () {
-    for filename in "${@}" ; do
-        dirname="$(dirname "${filename}")"
-        basename="$(basename "${filename}")"
-        case "${basename}" in
-            .*.*)                             # '.foo.bar'
-                basebasename="${basename%.*}" # '.foo'
-                ext=".${basename##*.}"        # .bar'
-                ;;
-            .*)                            # '.foo'
-                basebasename="${basename}" # '.foo'
-                ext=""                     # ''
-                ;;
-            *.*)                              # 'foo.bar'
-                basebasename="${basename%.*}" # 'foo'
-                ext=".${basename##*.}"        # '.bar'
-                ;;
-            *)                             # 'foo'
-                basebasename="${basename}" # 'foo'
-                ext=""                     # ''
-                ;;
-        esac
+would_merge () {
+    # relative to project root
+    local filename="$1"
 
-        base="${dirname}/${basebasename}.GWM.BASE${ext}"
-        ours="${dirname}/${basebasename}.GWM.OURS${ext}"
-        theirs="${dirname}/${basebasename}.GWM.THEIRS${ext}"
-        base2="${dirname}/${basebasename}.GWM.BASE.2${ext}"
-        ours2="${dirname}/${basebasename}.GWM.OURS.2${ext}"
-        theirs2="${dirname}/${basebasename}.GWM.THEIRS.2${ext}"
-        fromBaseToOurs="${dirname}/${basebasename}.GWM.BASE--OURS${ext}"
-        fromBaseToTheirs="${dirname}/${basebasename}.GWM.BASE--THEIRS${ext}"
+    # relative to pwd
+    local rel_filename="$(realpath --relative-to=. "${rel_root}/${filename}")"
 
-        ( rm "${ours}" || true
-          rm "${theirs}" || true
-          rm "${base}" || true
-          rm "${fromBaseToOurs}.diff" || true
-          rm "${fromBaseToTheirs}.diff" || true
-          rm "${fromBaseToOurs}.w.diff" || true
-          rm "${fromBaseToTheirs}.w.diff" || true ) >/dev/null 2>/dev/null
+    # Name our output files whatever.BASE.ext.
+    local name="$(name "${rel_filename}")"
+    local ext="$(ext "${rel_filename}")"
+    local base="${name}.BASE${ext}"
+    local ours="${name}.OURS${ext}"
+    local theirs="${name}.THEIRS${ext}"
 
-        case "${filename}" in
-            ./*)     gitfilename="${filename}"   ;;
-            ../*)    gitfilename="${filename}"   ;;
-            /*)      gitfilename="${filename}"   ;;
-            *)       gitfilename="./${filename}" ;;
-        esac
+    # Write temporary files.
+    local temp_base="${temp_base}"
+    local temp_ours="${temp_ours}"
+    local temp_theirs="${temp_theirs}"
+    git show ":1:${filename}" >"${temp_base}"
+    git show ":2:${filename}" >"${temp_ours}"
+    git show ":3:${filename}" >"${temp_theirs}"
 
-        local -a files
+    # Estimate best course of action based on the quick-and-dirty
+    # metric of how many differences between base/theirs or between
+    # base/ours known as counting lines of diff output.
+    local theirs_vs_base="$(git diff --no-index -w "${temp_base}" "${temp_theirs}" | wc -l)"
+    local ours_vs_base="$(git diff --no-index -w "${temp_base}" "${temp_ours}" | wc -l)"
 
-        # gitrevisions(7)
-        #     :1: common ancestor                           MERGE_BASE
-        #     :2: target branch (usually current branch)    ORIG_HEAD
-        #     :3: version from branch being merged          MERGE_HEAD
-
-        has_merge_base=1
-        if git show ":1:./${gitfilename}" >"${base}" ; then
-            :
-        else
-            merge_base="$(git merge-base ORIG_HEAD MERGE_HEAD)"
-            if git show "${merge_base}:./${gitfilename}" >"${base}" ; then
-                :
-            else
-                has_merge_base=0
-                >&2 echo "*** NOTICE *** ${gitfilename} is not in merge base ***"
-            fi
+    if (( dry_run )) ; then
+        echo "DRY RUN: ${base}"
+        echo "DRY RUN: ${ours}     (${ours_vs_base} lines of diff)"
+        echo "DRY RUN: ${theirs}   (${theirs_vs_base} lines of diff)"
+    else
+        if (( !force )) ; then
+            require_none_exist "${base}" "${ours}" "${theirs}"
         fi
-        git show ":2:./${gitfilename}" >"${ours}"
-        git show ":3:./${gitfilename}" >"${theirs}"
-
-        if (( has_merge_base )) ; then
-            files+=(
-                "${base}"
-            )
-        fi
-        files+=(
-            "${ours}"
-            "${theirs}"
-        )
-
-        if (( has_merge_base )) ; then
-            git show "${mergeBase}:./${gitfilename}" >"${base2}"
-        fi
-        git show "${origHead}:./${gitfilename}"  >"${ours2}"
-        git show "${mergeHead}:./${gitfilename}" >"${theirs2}"
-
-        if (( has_merge_base )) ; then
-            if diff "${base}"   "${base2}"   ; then rm "${base2}"   ; else >&2 echo "WARNING: :1: and merge base ${mergeBase} differ" ; files+=("${base2}")   ; fi
-        fi
-        if diff "${ours}"   "${ours2}"   ; then rm "${ours2}"   ; else >&2 echo "WARNING: :2: and ours ${ours} differ"            ; files+=("${ours2}")   ; fi
-        if diff "${theirs}" "${theirs2}" ; then rm "${theirs2}" ; else >&2 echo "WARNING: :2: and ours ${theirs} differ"          ; files+=("${theirs2}") ; fi
-
-        local -a diff=(
-            # diff -u --strip-trailing-cr -B -b -w
-            git diff --no-index --ignore-cr-at-eol --ignore-blank-lines -b -w --color=never "${diff_options[@]}"
-        )
-
-        if (( has_merge_base )) ; then
-            "${diff[@]}"                "${base}" "${ours}"               >"${fromBaseToOurs}.diff" || true
-            "${diff[@]}"                "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.diff" || true
-            "${diff[@]}"                "${base}" "${theirs}"             >"${fromBaseToTheirs}.diff" || true
-            "${diff[@]}"                "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.diff" || true
-
-            "${diff[@]}" --color=always "${base}" "${ours}"               >"${fromBaseToOurs}.c.diff" || true
-            "${diff[@]}" --color=always "${base}" "${ours}"   --word-diff >"${fromBaseToOurs}.w.c.diff" || true
-            "${diff[@]}" --color=always "${base}" "${theirs}"             >"${fromBaseToTheirs}.c.diff" || true
-            "${diff[@]}" --color=always "${base}" "${theirs}" --word-diff >"${fromBaseToTheirs}.w.c.diff" || true
-
-            files+=(
-                "${fromBaseToOurs}.diff"
-                "${fromBaseToOurs}.w.diff"
-                "${fromBaseToTheirs}.diff"
-                "${fromBaseToTheirs}.w.diff"
-                "${fromBaseToOurs}.c.diff"
-                "${fromBaseToOurs}.w.c.diff"
-                "${fromBaseToTheirs}.c.diff"
-                "${fromBaseToTheirs}.w.c.diff"
-            )
-        fi
-
-        git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${mergeHead}..${origHead}" -- "${gitfilename}" >"${ours}.log"
-        git log --patch --ignore-cr-at-eol --ignore-blank-lines -b -w "${origHead}..${mergeHead}" -- "${gitfilename}" >"${theirs}.log"
-
-        files+=(
-            "${ours}.log"
-            "${theirs}.log"
-        )
-
-        echo "${filename}"
-        echo "    base is ${mergeBase}; ours is ${origHead}; source branch is ${mergeHead}"
-        echo "    Wrote the following files:"
-
-        ( /bin/ls -l -d "${files[@]}" 2>/dev/null | sed 's/^/    /' ) || true
-
-        local noConflicts=1
-
-        declare -a files_check_conflict_markers=()
-        if (( has_merge_base )) ; then
-            files+=("${base}")
-        fi
-        files_check_conflict_markers+=("${ours}" "${theirs}")
-
-        local i
-        for i in "${files_check_conflict_markers[@]}" ; do
-            if grep -e '^<<<<<<< ' -e '^======= ' -e '^>>>>>>> ' -e '^<<<<<<<<< ' -e '^========= ' -e '^>>>>>>>>> ' "${ours}" >/dev/null 2>/dev/null ; then
-                noConflicts=0
-                echo "    :-( ${i} itself appears to contain merge conflicts."
-            fi
-        done
-
-        if (( noConflicts )) ; then
-            echo "    :-) No merge conflicts in any of the files being merged."
-        fi
-    done
+        mv "${temp_base}" "${base}"
+        mv "${temp_ours}" "${ours}"
+        mv "${temp_theirs}" "${theirs}"
+        echo "wrote ${base}"
+        echo "wrote ${ours}     (${ours_vs_base} lines of diff)"
+        echo "wrote ${theirs}   (${theirs_vs_base} lines of diff)"
+    fi
 }
 
+# We don't want to overwrite files by default.
+require_none_exist () {
+    local error=0
+    local filename
+    for filename ; do
+        if [[ -e "${filename}" ]] ; then
+            error=1
+            echo "${filename} exists."
+        fi
+    done
+    if (( error )) ; then
+        echo "Please move the file(s) out of the way."
+        exit 1
+    fi
+    return 0
+}
+
+# So we can compute the whatever.BASE.ext, whatever.OURS.ext, and
+# whatever.THEIRS.ext filenames from whatever.ext.
+ext () {
+    local filename="$1"
+    local basename="$(basename "$1")"
+    case "${basename}" in
+        .*.*)
+            echo ".${filename##*.}"
+            ;;
+        .*)
+            echo ""
+            ;;
+        *.*)
+            echo ".${filename##*.}"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+name () {
+    local filename="$1"
+    local basename="$(basename "$1")"
+    case "${basename}" in
+        .*.*)
+            echo "${filename%.*}"
+            ;;
+        .*)
+            echo "${filename}"
+            ;;
+        *.*)
+            echo "${filename%.*}"
+            ;;
+        *)
+            echo "${filename}"
+            ;;
+    esac
+}
+
+# Find our generated files, treat them as detritus, and clean it up.
 clean () {
-    find "${root}" \
-         \! \( -type d -name .git -prune \) \
-         \! \( -type d -name node_modules -prune \) \
-         -type f \( \
-         -name '*.GWM.*' -o \
-         -name '*--OURS*' -o \
-         -name '*--THEIRS*' -o \
-         -name '*--BASE*' \) -exec rm -v {} +
+    if (( !dry_run && !force )) ; then
+        echo "$0: -c (clean) requires -n (dry run) or -f (force)" >&2
+        return 1
+    fi
+    local -a files=()
+    local file
+    if (( dry_run )) ; then
+        find "${rel_root}" -type f \( -name '*.BASE.*' -o -name '*.OURS.*' -o -name '*.THEIRS.*' \) -print
+    else
+        find "${rel_root}" -type f \( -name '*.BASE.*' -o -name '*.OURS.*' -o -name '*.THEIRS.*' \) -exec rm -v {} +
+    fi
 }
 
-at_exit () {
-    for varname in ours theirs base ; do
-        [[ -v "${varname}" ]] && [[ -n "${!varname}" ]] && [[ -e "${!varname}.tmp" ]] &&
-            { rm "${!varname}.tmp" >/dev/null 2>/dev/null || true; }
-    done
-}
-
-###############################################################################
 main "$@"
