@@ -7,7 +7,6 @@ shopt -s lastpipe
 
 declare -a locals=()            # locals=(master development)
 declare -a remotes=()           # remotes=(remotes/origin/master remotes/origin/development)
-declare -A exists=()            # exists[master]=1 exists[remotes/origin/master]=1
 declare -A has_local=()         # has_local[master]=1
 declare -A has_remote=()        # has_remote[master]=1
 
@@ -15,7 +14,6 @@ fmt='%6s  %-32s  %-12s  %s\n'
 
 git --no-pager branch --all --list --no-color --no-column | cut -c3- | grep -v -e '/HEAD -> ' | mapfile -t refs
 for ref in "${refs[@]}" ; do
-    exists["${ref}"]=1
     if [[ "${ref}" = remotes/*/* ]] ; then
         has_remote["${ref#remotes/*/}"]=1
         remotes+=("${ref}")
