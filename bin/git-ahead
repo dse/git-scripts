@@ -5,8 +5,6 @@ set -o nounset
 # set -o xtrace
 shopt -s lastpipe
 
-verbose=0
-
 declare -a locals=()            # locals=(master development)
 declare -a remotes=()           # remotes=(remotes/origin/master remotes/origin/development)
 declare -A exists=()            # exists[master]=1 exists[remotes/origin/master]=1
@@ -29,16 +27,17 @@ done
 for remote in "${remotes[@]}" ; do
     local="${remote#remotes/*/}"
     if (( ! has_local["${local}"] )) ; then
-        printf "%6s  NOT CHECKED OUT: %s\\n" "-" "${remote}"
+        # printf "%6s  NOT CHECKED OUT: %s\\n" "-" "${remote}"
         continue
     fi
     git rev-list --left-right --count "${local}"..."${remote}" | read ahead behind
     if (( ahead )) ; then
-        printf "%6d  %s AHEAD %s\\n" "${ahead}" "${local}" "${remote}"
+        printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
     elif (( behind )) ; then
-        printf "%6d  %s BEHIND %s\\n" "${behind}" "${local}" "${remote}"
-    elif (( verbose )) ; then
-        printf "%6d  %s IN SYNC %s\\n" 0 "${local}" "${remote}"
+        printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
+    # elif (( verbose )) ; then
+    #     :
+    #     # printf "%6d  %s IN SYNC %s\\n" 0 "${local}" "${remote}"
     fi
 done
 for local in "${locals[@]}" ; do
