@@ -5,6 +5,8 @@ set -o nounset
 # set -o xtrace
 shopt -s lastpipe
 
+PROGNAME="$(dirname "$0")"      # executed as git-ahead, git-behind, or git-ahead-behind?
+
 declare -a locals=()            # locals=(master development)
 declare -a remotes=()           # remotes=(remotes/origin/master remotes/origin/development)
 declare -A has_local=()         # has_local[master]=1
@@ -29,20 +31,22 @@ for remote in "${remotes[@]}" ; do
         continue
     fi
     git rev-list --left-right --count "${local}"..."${remote}" | read ahead behind
-    if (( ahead )) ; then
+    if (( ahead )) && [[ "$0" != */git-behind ]] ; then
         printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
-    elif (( behind )) ; then
+    elif (( behind )) && [[ "$0" != */git-ahead ]] ; then
         printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
     # elif (( verbose )) ; then
     #     :
     #     # printf "%6d  %s IN SYNC %s\\n" 0 "${local}" "${remote}"
     fi
 done
-for local in "${locals[@]}" ; do
-    if (( ! has_remote["${local}"] )) ; then
-        printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
-    fi
-done
+if [[ "$0" == */git-ahead-behind ]] ; then
+    for local in "${locals[@]}" ; do
+        if (( ! has_remote["${local}"] )) ; then
+            printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
+        fi
+    done
+fi
 
 # if (( ! $# )) ; then
 #     git status --short --branch
