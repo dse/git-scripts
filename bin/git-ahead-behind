@@ -43,3 +43,9 @@ for local in "${locals[@]}" ; do
         printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
     fi
 done
+
+# if (( ! $# )) ; then
+#     git status --short --branch
+# else
+#     git status --short --branch "$@"
+# fi
