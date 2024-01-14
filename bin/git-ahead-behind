@@ -7,6 +7,37 @@ shopt -s lastpipe
 
 PROGNAME="$(dirname "$0")"      # executed as git-ahead, git-behind, or git-ahead-behind?
 
+verbosity=0
+
+while getopts 'v-:' OPTION ; do
+    if [[ "${OPTION}" == "-" ]] ; then
+        if [[ "${OPTARG}" == *=* ]] ; then # "option=value"
+            OPTION="--${OPTARG%%=*}"       # "--option"
+            OPTARG="${OPTARG#*=}"          # "value"
+        else                               # "option"
+            OPTION="--${OPTARG}"           # "--option"
+            unset OPTARG
+        fi
+    fi
+    case "${OPTION}" in
+        --verbose|--verbosity|v)
+            if [[ -v OPTARG ]] ; then
+                >&2 echo "$0: option does not take argument -- ${OPTION#--}"
+                exit 1
+            fi
+            verbosity=$((verbosity+1))
+            ;;
+        --*)
+            >&2 echo "$0: illegal option -- ${OPTION#--}"
+            exit 1
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 declare -a locals=()            # locals=(master development)
 declare -a remotes=()           # remotes=(remotes/origin/master remotes/origin/development)
 declare -A has_local=()         # has_local[master]=1
@@ -31,21 +62,54 @@ for remote in "${remotes[@]}" ; do
         continue
     fi
     git rev-list --left-right --count "${local}"..."${remote}" | read ahead behind
-    if (( ahead )) && [[ "$0" != */git-behind ]] ; then
-        printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
-    elif (( behind )) && [[ "$0" != */git-ahead ]] ; then
-        printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
-    # elif (( verbose )) ; then
-    #     :
-    #     # printf "%6d  %s IN SYNC %s\\n" 0 "${local}" "${remote}"
-    fi
+    case "${0##*/}" in
+        git-ahead-behind)
+            if (( ahead )) ; then
+                printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
+            fi
+            if (( behind )) ; then
+                printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
+            fi
+            ;;
+        git-ahead)
+            if (( ahead )) ; then
+                printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
+                if (( verbosity && behind )) ; then
+                    printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
+                fi
+            fi
+            ;;
+        git-behind)
+            if (( behind )) ; then
+                printf "%6d  BEHIND: %s %s\\n" "${behind}" "${local}" "${remote}"
+                if (( verbosity && ahead )) ; then
+                    printf "%6d  AHEAD: %s %s\\n" "${ahead}" "${local}" "${remote}"
+                fi
+            fi
+            ;;
+    esac
 done
-if [[ "$0" == */git-ahead-behind ]] ; then
-    for local in "${locals[@]}" ; do
-        if (( ! has_remote["${local}"] )) ; then
-            printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
+
+case "${0##*/}" in
+    git-ahead-behind)
+        for local in "${locals[@]}" ; do
+            if (( ! has_remote["${local}"] )) ; then
+                printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
+            fi
+        done
+        ;;
+    git-ahead|git-behind)
+        if (( verbosity )) ; then
+            for local in "${locals[@]}" ; do
+                if (( ! has_remote["${local}"] )) ; then
+                    printf "%6s  NO REMOTES: %s\\n" "-" "${local}"
+                fi
+            done
         fi
-    done
+        ;;
+esac
+
+if [[ "$0" == */git-ahead-behind ]] ; then
 fi
 
 # if (( ! $# )) ; then
