@@ -110,6 +110,7 @@ case "${0##*/}" in
 esac
 
 if [[ "$0" == */git-ahead-behind ]] ; then
+    :
 fi
 
 # if (( ! $# )) ; then
