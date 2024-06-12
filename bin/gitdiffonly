@@ -1,0 +1,40 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+# gitdiffonly - pipe git-diff's output to only show the matched parts.
+# It's like --only-matching but instead of grep it's git-diff.
+while (<>) {
+    s{\R\z}{};
+    # if (/^(diff |index |\-\-\- |\+\+\+ |@@ )/) {
+    #     print("$_\n");
+    #     next;
+    # }
+  look:
+    while (s/^.*?(\[-.*?-\]|\{\+.*?\+\})//) {
+        print("$1\n");
+    }
+    if (/(\[-|\{\+).*$/) {
+        if ($1 eq '[-') {
+            print("$&$'\n");
+            while (<>) {
+                s{\R\z}{};
+                if (s/^.*?-\]//) {
+                    print("$&\n");
+                    goto look;
+                } else {
+                    print("$_\n");
+                }
+            }
+        } else {
+            while (<>) {
+                s{\R\z}{};
+                if (s/.*?\+\}//) {
+                    print("$&\n");
+                    goto look;
+                } else {
+                    print("$_\n");
+                }
+            }
+        }
+    }
+}
