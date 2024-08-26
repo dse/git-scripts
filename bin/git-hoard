@@ -1,3 +1,23 @@
 #!/usr/bin/env bash
->&2 echo "Yeah, just run 'git stash -u' instead."
-exit 1
+set -o errexit
+set -o pipfail
+set -o nounset
+shopt -s lastpipe
+
+main () {
+    current_branch_ref="$(git symbolic-ref HEAD)"
+    current_branch="${current_branch_ref#refs/heads/}"
+    timestamp="$(perl -e 'use Time::HiRes qw(gettimeofday); printf("%6f", scalar(gettimeofday()));')"
+    new_branch_name="hoard/${current_branch}/${timestamp}"
+    git checkout -b "${new_branch_name}"
+    at_exit () {
+        git checkout -
+    }
+
+}
+
+at_exit () { : ; }
+
+trap at_exit EXIT
+
+main "$@"
