@@ -1,3 +1,38 @@
 #!/usr/bin/env bash
->&2 echo "Yeah, just run 'git stash -u' instead."
-exit 1
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+dry_run=0
+force=0
+declare -a git_clean_args=()
+
+main () {
+    root="$(git rev-parse --show-toplevel)"
+    cd "${root}"
+    temp1="$(mktemp)"
+    git ls-files --others --exclude-standard -z >"${temp1}"
+    tarfile="$(mktemp "${root}/../XXXXXXXXXX")"
+    mv "${tarfile}" "${tarfile}.tar.gz"
+    tarfile="${tarfile}.tar.gz"
+    if tar -c -v -z -f "${tarfile}" -T "${temp1}" --null ; then
+        echo "Created $(realpath ${tarfile})" >&2
+    else
+        echo "Failed to create archive" >&2
+        rm "${tarfile}"
+        exit 1
+    fi
+    declare -a files
+    cat "${temp1}" | readarray -d '' -t files
+    rm "${files[@]}"
+    echo "Files removed" >&2
+}
+
+trap at_exit EXIT
+
+at_exit () {
+    [[ -v temp1 ]] && { rm "${temp1}" || true ; }
+}
+
+main "$@"
