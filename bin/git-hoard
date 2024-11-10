@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -o errexit
-set -o pipfail
+set -o pipefail
 set -o nounset
 shopt -s lastpipe
 
@@ -13,7 +13,9 @@ main () {
     at_exit () {
         git checkout -
     }
-
+    git add --all
+    git commit -m "${new_branch_name}"
+    echo "Created branch: ${new_branch_name}"
 }
 
 at_exit () { : ; }
