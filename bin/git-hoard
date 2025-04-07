@@ -29,6 +29,20 @@ main () {
     echo "Files removed" >&2
 }
 
+main2 () {
+    current_branch_ref="$(git symbolic-ref HEAD)"
+    current_branch="${current_branch_ref#refs/heads/}"
+    timestamp="$(perl -e 'use Time::HiRes qw(gettimeofday); printf("%6f", scalar(gettimeofday()));')"
+    new_branch_name="hoard/${current_branch}/${timestamp}"
+    git checkout -b "${new_branch_name}"
+    at_exit () {
+        git checkout -
+    }
+    git add --all
+    git commit -m "${new_branch_name}"
+    echo "Created branch: ${new_branch_name}"
+}
+
 trap at_exit EXIT
 
 at_exit () {
