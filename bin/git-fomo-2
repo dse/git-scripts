@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+main () {
+    temp1="$(mktemp)"
+    temp2="$(mktemp)"
+    if (( $# < 2 )) ; then
+        echo "not enough arguments" >&2
+        exit 1
+    fi
+    dir1="$1"
+    dir2="$2"
+    declare -a refs
+
+    # echo "... $1 ..."
+    # ( cd "${dir1}"; git for-each-ref )
+    # echo "... $2 ..."
+    # ( cd "${dir2}"; git for-each-ref 'refs/remotes/origin/*' )
+
+    # (
+    #     cd "${dir1}"
+    #     git for-each-ref | awk '{print $3}' | readarray -t refs
+    #     git rev-list "${refs[@]}" | sort
+    # ) >"${temp1}"
+
+    # (
+    #     cd "${dir2}"
+    #     git for-each-ref 'refs/remotes/origin/*' | awk '{print $3}' | readarray -t refs
+    #     git rev-list "${refs[@]}" | sort
+    # ) >"${temp2}"
+
+    # list commits in DIR1 not in DIR2
+
+    comm -2 -3 "${temp1}" "${temp2}"
+}
+
+RUN () {
+    echo "${@@Q}"
+    "${@}"
+}
+
+trap at_exit EXIT
+at_exit () {
+    [[ -v temp  ]] && [[ -n "${temp}"  ]] && [[ -e "${temp}"  ]] && { rm "${temp}"  || true ; }
+    [[ -v temp1 ]] && [[ -n "${temp1}" ]] && [[ -e "${temp1}" ]] && { rm "${temp1}" || true ; }
+    [[ -v temp2 ]] && [[ -n "${temp2}" ]] && [[ -e "${temp2}" ]] && { rm "${temp2}" || true ; }
+    [[ -v temp3 ]] && [[ -n "${temp3}" ]] && [[ -e "${temp3}" ]] && { rm "${temp3}" || true ; }
+}
+
+###############################################################################
+main "$@"

@@ -1,0 +1,122 @@
+#!/usr/bin/env -S awk -f
+FNR == 1 {
+    if (length(ARGV) < 2) {
+        print("=== " FILENAME " ===")
+    }
+    delta_ours = 0
+    delta_base = 0
+    delta_theirs = 0
+    start_ours = 0
+    end_ours = 0
+    start_base = 0
+    end_base = 0
+    start_theirs = 0
+    end_theirs = 0
+    has_base = 0
+    state = 0
+    start_conflict = 0
+    end_conflict = 0
+}
+/^<<<<<<< / {
+    if (state == 0) {
+        ours = substr($0, 9)
+        start_ours = FNR + 1
+        state = 1
+        start_conflict = FNR
+    } else {
+        printf("[WARN] %s:%d:unexpected <<<<<<< conflict marker (state = %d)\n", FILENAME, FNR, state);
+    }
+}
+/^\|\|\|\|\|\|\| / {
+    if (state == 1) {
+        has_base = 1
+        base = substr($0, 9)
+        end_ours = FNR - 1
+        start_base = FNR + 1
+        state = 3
+    } else {
+        printf("[WARN] %s:%d:unexpected ||||||| conflict marker (state = %d)\n", FILENAME, FNR, state);
+    }
+}
+/^=======$/ {
+    if (state == 1) {
+        end_ours = FNR - 1
+        start_theirs = FNR + 1
+        state = 2
+    } else if (state == 3) {
+        end_base = FNR - 1
+        start_theirs = FNR + 1
+        state = 2
+    } else {
+        printf("[WARN] %s:%d:unexpected ======= conflict marker (state = %d)\n", FILENAME, FNR, state);
+    }
+}
+/^>>>>>>> / {
+    if (state == 2) {
+        theirs = substr($0, 9)
+        end_theirs = FNR - 1
+        end_conflict = FNR
+
+        start_in_ours = start_ours - 1
+        end_in_ours = end_ours - 1
+        if (has_base) {
+            start_in_base   = start_ours - 1
+            end_in_base     = start_ours - 1 + end_base - start_base
+            start_in_theirs = start_ours - 1
+            end_in_theirs   = start_ours - 1 + end_theirs - start_theirs
+        } else {
+            start_in_theirs = start_ours - 1
+            end_in_theirs   = start_ours - 1 + end_theirs - start_theirs
+        }
+        start_in_ours -= delta_ours
+        end_in_ours -= delta_ours
+        if (has_base) {
+            start_in_base -= delta_base
+            end_in_base -= delta_base
+        }
+        start_in_theirs -= delta_theirs
+        end_in_theirs -= delta_theirs
+        print(start_conflict, end_conflict)
+        delta_ours += (FNR + 1) - (end_in_ours + 1)
+        if (has_base) {
+            delta_base += (FNR + 1) - (end_in_base + 1)
+        }
+        delta_theirs += (FNR + 1) - (end_in_theirs + 1)
+
+        start_ours = 0
+        end_ours = 0
+        start_base = 0
+        end_base = 0
+        start_theirs = 0
+        end_theirs = 0
+        has_base = 0
+        state = 0
+    } else {
+        printf("[WARN] %s:%d:unexpected >>>>>>> conflict marker (state = %d)\n", FILENAME, FNR, state);
+    }
+}
+
+# simple conflict markers
+#     <<<<<<< ours      |
+#     ...               | start_ours
+#     ...               |
+#     ...               | end_ours
+#     =======           |
+#     ...               | start_theirs
+#     ...               |
+#     ...               | end_theirs
+#     >>>>>>> theirs    |
+# diff3 conflict markers (git config set merge.conflictStyle diff3)
+#     <<<<<<< ours      |
+#     ...               | start_ours
+#     ...               |
+#     ...               | end_ours
+#     ||||||| base      |
+#     ...               | start_base
+#     ...               |
+#     ...               | end_base
+#     =======           |
+#     ...               | start_theirs
+#     ...               |
+#     ...               | end_theirs
+#     >>>>>>> theirs    |

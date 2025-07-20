@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+git diff -w --word-diff --color=always "$@" | perl -g -e '
+    my $OPT_ESC_SEQ = qr{(?:\e\[(?:\d+(?:;\d+)*)?m)?};
+    while (<>) {
+        1 while s{
+          -\]
+          (
+          ${OPT_ESC_SEQ}
+          [ \t]*
+          \R
+          [ \t]*
+          ${OPT_ESC_SEQ}
+          )
+          \[-
+         }
+         { }gsx;
+        1 while s{
+          \+\}
+          (
+          ${OPT_ESC_SEQ}
+          [ \t]*
+          \R
+          [ \t]*
+          ${OPT_ESC_SEQ}
+          )
+          \{\+
+         }
+         { }gsx;
+        while (m{
+                 ^${OPT_ESC_SEQ}diff[^\r\n]*${OPT_ESC_SEQ}$
+                 |
+                 ${OPT_ESC_SEQ}
+                 (?:
+                    \[-
+                    .*?
+                    -\]
+                   |
+                    \{\+
+                    .*?
+                    \+\}
+                 )
+                 ${OPT_ESC_SEQ}
+                }gsxm) {
+            my $match = $&;
+            $match =~ s{[ \t]+}{ }g;
+            print("$match\n");
+        }
+    }
+'

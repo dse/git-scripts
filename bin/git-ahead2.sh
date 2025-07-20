@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -o errexit                  # exit if any pipeline fails
+set -o nounset                  # set your variables first
+set -o pipefail                 # if one component fails the pipeline fails
+shopt -s lastpipe               # last component is exec'd in foreground
+# set -o xtrace
+
+declare -a branch_refs
+declare -a remote_refs
+
+git for-each-ref --format='%(refname)' 'refs/heads/*' | readarray -t branch_refs
+
+for branch_ref in "${branch_refs[@]}" ; do
+    branch="${branch_ref#refs/heads/}"
+    git for-each-ref --format='%(refname)' "refs/remotes/*/${branch}" | readarray -t remote_refs
+    for remote_ref in "${remote_refs[@]}" ; do
+        remote="${remote_ref#refs/remotes/}"
+        remote="${remote%/${branch}}"
+        git rev-list --left-right --count "${branch_ref}...${remote_ref}" | read ahead behind
+        if (( ahead || behind )) ; then
+            printf "ahead %4d      behind %4d     %-30s  %s\\n" "${ahead}" "${behind}" "${branch}" "${remote}"
+        fi
+    done
+done

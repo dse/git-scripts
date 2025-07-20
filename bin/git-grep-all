@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s lastpipe
+
+declare -a branches
+git branch
+git branch
+git branch | sed -E -e 's/^..//' | readarray -t branches
+
+declare -a git_grep_args=()
+declare -a pathspecs=()
+
+while (( $# )) && [[ "$1" != '--' ]] ; do
+    git_grep_args+=("$1")
+    shift
+done
+if (( $# )) && [[ "$1" = "--" ]] ; then
+    shift
+fi
+pathspecs=("$@")
+pathspecs+=(
+    ':(exclude)**/vendor/**'
+    ':(exclude)**/node_modules/**'
+    ':(exclude)**/*.jpg' 
+    ':(exclude)**/*.jpeg'
+    ':(exclude)**/*.gif'
+    ':(exclude)**/*.png'
+    ':(exclude)**/*.pdf'
+)
+if (( "${#pathspecs[@]}" )) ; then
+    pathspecs=("--" "${pathspecs[@]}")
+fi    
+
+
+
+for branch in "${branches[@]}" ; do
+    if [[ -t 2 ]] ; then
+        echo "[branch ${branch}]" >&2
+    fi
+    echo + git --no-pager grep "${git_grep_args[@]}" "${branch[@]}" "${pathspecs[@]}" >&2
+    strace -e trace=open git --no-pager grep "${git_grep_args[@]}" "${branch[@]}" "${pathspecs[@]}" ':(exclude)**/vendor/**'
+    echo + done >&2
+done

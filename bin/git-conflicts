@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+main () {
+    verbose=0
+    while getopts v OPTION ; do
+        case "${OPTION}" in
+            v)
+                verbose=$((verbose + 1))
+                ;;
+            "?")
+                exit 1
+                ;;
+        esac
+    done
+    shift $((OPTIND - 1))
+    if (( verbose == 2 )) ; then
+        show_conflicts
+    elif (( verbose == 1 )) ; then
+        show_conflict_line_counts
+    else
+        git ls-files -u | cut -f 2 | sort -u
+    fi
+}
+
+show_conflict_line_counts () {
+    declare -a files
+    git ls-files -u | cut -f 2 | sort -u | readarray -t files
+    local file
+    for file in "${files[@]}" ; do
+        echo "=== ${file} ==="
+        echo "$(git show :1:./"${file}" | wc -l) lines in merge base (HEAD)"
+        echo "$(git show :2:./"${file}" | wc -l) lines in ours"
+        echo "$(git show :3:./"${file}" | wc -l) lines in theirs"
+        # documented in git-merge(1)
+        # documented in gitrevisions(7)
+        # :0: means the index
+    done
+}
+
+show_conflicts () {
+    declare -a files
+    git ls-files -u | cut -f 2 | sort -u | readarray -t files
+    local file
+    for file in "${files[@]}" ; do
+        echo "=== ${file} ==="
+        awk '
+            BEGIN {
+                a = 0;
+                b = 0;
+            }
+            /^<<<<<<< / {
+                a = FNR;
+            }
+            /^>>>>>>> / {
+                b = FNR;
+                print(a, b);
+            }
+        ' "./${file}" | while read a b ; do
+            git -c merge.conflictStyle="merge" \
+                -c blame.date="format:%m/%d/%Y %H:%M" \
+                blame -L "${a},${b}" "./${file}"
+            echo ""
+        done
+        # documented in git-merge(1)
+        # documented in gitrevisions(7)
+        # :0: means the index
+    done
+}
+
+
+
+main "$@"
+
+# # https://stackoverflow.com/questions/3065650/whats-the-simplest-way-to-list-conflicted-files-in-git
+# git diff --check | sed -n -E -e 's/:[0-9]+://;' -e '/ leftover conflict marker$/{s///g;p;}'
+# git diff --name-only --diff-filter=U

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+set -o nounset
+shopt -s lastpipe
+
+main () {
+    temp1="$(mktemp)"
+    temp2="$(mktemp)"
+    declare -a refs
+    declare -a remotes
+    declare -a other_remotes
+    git remote | readarray -t remotes
+    git remote | { grep -v origin || true ; } | readarray -t other_remotes
+
+    if (( !${#other_remotes[@]} )) ; then
+        echo "no remotes other than origin"
+        exit 1
+    fi
+
+    git for-each-ref "refs/remotes/origin/*" | awk '{print $3}' | readarray -t refs
+    echo "${refs}"
+
+    for remote in "${other_remotes}" ; do
+        git for-each-ref "refs/remotes/${other_remotes}"
+    done
+}
+
+RUN () {
+    echo "${@@Q}"
+    "${@}"
+}
+
+trap at_exit EXIT
+at_exit () {
+    [[ -v temp  ]] && [[ -n "${temp}"  ]] && [[ -e "${temp}"  ]] && { rm "${temp}"  || true ; }
+    [[ -v temp1 ]] && [[ -n "${temp1}" ]] && [[ -e "${temp1}" ]] && { rm "${temp1}" || true ; }
+    [[ -v temp2 ]] && [[ -n "${temp2}" ]] && [[ -e "${temp2}" ]] && { rm "${temp2}" || true ; }
+    [[ -v temp3 ]] && [[ -n "${temp3}" ]] && [[ -e "${temp3}" ]] && { rm "${temp3}" || true ; }
+}
+
+###############################################################################
+main "$@"

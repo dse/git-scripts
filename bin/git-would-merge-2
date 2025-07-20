@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+shopt -s lastpipe       # for ... | {readarray|mapfile} -t <arrayname>
+
+# create temporary files and clean them up on script exit
+temp_base="$(mktemp)"
+temp_ours="$(mktemp)"
+temp_theirs="$(mktemp)"
+at_exit () {
+    if [[ -e "${temp_base}" ]] ; then rm "${temp_base}" || true ; fi
+    if [[ -e "${temp_ours}" ]] ; then rm "${temp_ours}" || true ; fi
+    if [[ -e "${temp_theirs}" ]] ; then rm "${temp_theirs}" || true ; fi
+}
+trap at_exit EXIT
+
+main () {
+    # option default values
+    local force=0
+    local dry_run=0
+    local clean=0
+    local verbose=0
+
+    # check for options
+    while getopts 'cfnv' OPTION ; do
+        case "${OPTION}" in
+            f) dry_run=0; force=1;;
+            n) force=0; dry_run=1;;
+            c) clean=1;;
+            v) verbose=$((verbose + 1));;
+            *) exit 1;;
+        esac
+    done
+    shift $((OPTIND - 1))
+
+    local root="$(git rev-parse --show-toplevel)"
+    local rel_root="$(realpath --relative-to=. "${root}")"
+
+    if (( clean )) ; then
+        clean
+        exit 0
+    fi
+
+    if [[ ! -e "${root}/.git/ORIG_HEAD" ]] || [[ ! -e "${root}/.git/MERGE_HEAD" ]] ; then
+        echo "It doesn't look like you're merging." >&2
+        exit 1
+    fi
+
+    orig_head="$(cat "${root}/.git/ORIG_HEAD")"
+    merge_head="$(cat "${root}/.git/MERGE_HEAD")"
+    merge_base="$(git merge-base "${orig_head}" "${merge_head}")"
+    if (( $# )) ; then
+        # We have arguments; run only those files.  Also, we specify
+        # those files relative to pwd so we need to compute
+        # project-root-relative paths.
+        for filename in "$@" ; do
+            filename="$(realpath --relative-to="${root}" "${filename}")"
+            would_merge "${filename}"
+        done
+    else
+        # We have no arguments; run every file with conflicts.  And in
+        # this case they're provided relative to project root.
+        git diff --name-only --diff-filter=U | mapfile -t filenames
+        if (( ! ${#filenames[@]} )) ; then
+            echo "$0: no files with conflicts"
+            exit 0
+        fi
+        for filename in "${filenames[@]}" ; do
+            would_merge "${filename}"
+        done
+    fi
+}
+
+would_merge () {
+    # relative to project root
+    local filename="$1"
+
+    # relative to pwd
+    local rel_filename="$(realpath --relative-to=. "${rel_root}/${filename}")"
+
+    # Name our output files whatever.BASE.ext.
+    local name="$(name "${rel_filename}")"
+    local ext="$(ext "${rel_filename}")"
+    local base="${name}.BASE${ext}"
+    local ours="${name}.OURS${ext}"
+    local theirs="${name}.THEIRS${ext}"
+
+    # Write temporary files.
+    local temp_base="${temp_base}"
+    local temp_ours="${temp_ours}"
+    local temp_theirs="${temp_theirs}"
+    # :1: and :2: and :3: are documented in gitrevisions
+    # as stage numbers
+    git show ":1:${filename}" >"${temp_base}"
+    git show ":2:${filename}" >"${temp_ours}"
+    git show ":3:${filename}" >"${temp_theirs}"
+
+    # Estimate best course of action based on the quick-and-dirty
+    # metric of how many differences between base/theirs or between
+    # base/ours known as counting lines of diff output.
+    local theirs_vs_base="$(git diff --no-index -w "${temp_base}" "${temp_theirs}" | wc -l)"
+    local ours_vs_base="$(git diff --no-index -w "${temp_base}" "${temp_ours}" | wc -l)"
+
+    if (( dry_run )) ; then
+        echo "DRY RUN: ${base}"
+        echo "DRY RUN: ${ours}     (${ours_vs_base} lines of diff)"
+        echo "DRY RUN: ${theirs}   (${theirs_vs_base} lines of diff)"
+    else
+        if (( !force )) ; then
+            require_none_exist "${base}" "${ours}" "${theirs}"
+        fi
+        mv "${temp_base}" "${base}"
+        mv "${temp_ours}" "${ours}"
+        mv "${temp_theirs}" "${theirs}"
+        echo "wrote ${base}"
+        echo "wrote ${ours}     (${ours_vs_base} lines of diff)"
+        echo "wrote ${theirs}   (${theirs_vs_base} lines of diff)"
+    fi
+}
+
+# We don't want to overwrite files by default.
+require_none_exist () {
+    local error=0
+    local filename
+    for filename ; do
+        if [[ -e "${filename}" ]] ; then
+            error=1
+            echo "${filename} exists."
+        fi
+    done
+    if (( error )) ; then
+        echo "Please move the file(s) out of the way."
+        exit 1
+    fi
+    return 0
+}
+
+# So we can compute the whatever.BASE.ext, whatever.OURS.ext, and
+# whatever.THEIRS.ext filenames from whatever.ext.
+ext () {
+    local filename="$1"
+    local basename="$(basename "$1")"
+    case "${basename}" in
+        .*.*)
+            echo ".${filename##*.}"
+            ;;
+        .*)
+            echo ""
+            ;;
+        *.*)
+            echo ".${filename##*.}"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+name () {
+    local filename="$1"
+    local basename="$(basename "$1")"
+    case "${basename}" in
+        .*.*)
+            echo "${filename%.*}"
+            ;;
+        .*)
+            echo "${filename}"
+            ;;
+        *.*)
+            echo "${filename%.*}"
+            ;;
+        *)
+            echo "${filename}"
+            ;;
+    esac
+}
+
+# Find our generated files, treat them as detritus, and clean it up.
+clean () {
+    if (( !dry_run && !force )) ; then
+        echo "$0: -c (clean) requires -n (dry run) or -f (force)" >&2
+        return 1
+    fi
+    local -a files=()
+    local file
+    if (( dry_run )) ; then
+        find "${rel_root}" -type f \( -name '*.BASE.*' -o -name '*.OURS.*' -o -name '*.THEIRS.*' \) -print
+    else
+        find "${rel_root}" -type f \( -name '*.BASE.*' -o -name '*.OURS.*' -o -name '*.THEIRS.*' \) -exec rm -v {} +
+    fi
+}
+
+main "$@"
