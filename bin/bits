@@ -1,0 +1,57 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use POSIX qw(floor);
+use Getopt::Long;
+use open IO => ":utf8";
+
+my $bits_per_word = 8;
+my $char = "#";
+
+Getopt::Long::Configure(qw(gnu_getopt));
+Getopt::Long::GetOptions(
+    "b|bits=i" => \$bits_per_word,
+    "c|char=s" => \$char,
+) or die(":-(\n");
+
+my $bytes_per_read = floor(4096 / $bits_per_word) * $bits_per_word;
+
+my @filenames = @ARGV;
+push(@filenames, "-") if !scalar @ARGV;
+
+foreach my $filename (@filenames) {
+    my $fh;
+    if ($filename eq "-") {
+        if (!open($fh, "<-")) {
+            continue;
+        }
+    } else {
+        if (!open($fh, "<", $filename)) {
+            continue;
+        }
+    }
+    binmode($fh);
+    my $data;
+    while (1) {
+        my $bytes = sysread($fh, $data, $bytes_per_read);
+        if (!defined $bytes) {
+            die("$filename: $!\n");
+        }
+        if (!$bytes) {
+            last;
+        }
+        my $binary = unpack("B*", $data);
+        for (my $i = 0; $i < length($binary); $i += $bits_per_word) {
+            my $bits = substr($binary, $i, $bits_per_word);
+            $bits =~ s{1}{$char}g;
+            $bits =~ s{0}{" " x length($char)}ge;
+            print("$bits");
+            if ($bits_per_word % 8 == 0) {
+                my $chars = pack("B*", substr($binary, $i, $bits_per_word));
+                $chars =~ s{[^\x20-\x7e]}{?}g;
+                print("  $chars");
+            }
+            print("\n");
+        }
+    }
+}
